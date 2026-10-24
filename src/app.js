@@ -227,7 +227,7 @@ function eventsOn(d){
 let taskIdx=null;
 function tasksDue(d){if(!taskIdx){taskIdx=new Map();for(const[lid,l]of Object.entries(S.lists))for(const t of l.tasks||[])if(t.due){if(!taskIdx.has(t.due))taskIdx.set(t.due,[]);taskIdx.get(t.due).push({lid,l,t})}}return taskIdx.get(d)||[]}
 const dueLabel=d=>{const t=today();return d===t?'Today':d===shift(t,1)?'Tomorrow':d===shift(t,-1)?'Yesterday':shortDate(d)};
-function taskChip(it,pos){const{lid,l,t}=it.tk;return `<button class="ev tk${t.done?' done':''}" data-task="${lid}|${t.id}" data-d="${it.d}" style="${pos};--c:${col(l.color)}"><span class="tbox" data-tchk></span><span class="et">${esc(t.text)}</span></button>`}
+function taskChip(it,pos){const{lid,l,t}=it.tk;return `<button class="ev tk${t.done?' done':''}${it.d<today()?' past':''}" data-task="${lid}|${t.id}" data-d="${it.d}" style="${pos};--c:${col(l.color)}"><span class="tbox" data-tchk></span><span class="et">${esc(t.text)}</span></button>`}
 function span(ev){let s=toMin(ev.start),e=toMin(ev.end);if(e<=s)e=Math.min(1440,s+30);return{s,e}}
 function rowItems(days,filter,withTasks){
   const n=days.length,items=[],seen=new Set();
@@ -278,7 +278,7 @@ function renderHeader(){
   strip.className='strip';const L=['S','M','T','W','T','F','S'];
   if(v==='month'){strip.hidden=false;strip.innerHTML=[0,1,2,3,4,5,6].map(i=>`<span>${L[(i+ui.ws)%7]}</span>`).join('')}
   else if(v==='week'||v==='day'){strip.hidden=false;if(v==='week')strip.classList.add('gut');const td=today();
-    strip.innerHTML=weekDays(ui.sel).map(s=>{const d=parse(s);return `<button class="hd${isWE(d)?' we':''}${s===td?' today':''}${s===ui.sel&&v==='day'?' sel':''}" data-hd="${s}" aria-label="${longDate(s)}">${L[d.getDay()]}<b>${d.getDate()}</b></button>`}).join('')}
+    strip.innerHTML=weekDays(ui.sel).map(s=>{const d=parse(s);return `<button class="hd${isWE(d)?' we':''}${s<td?' past':''}${s===td?' today':''}${s===ui.sel&&v==='day'?' sel':''}" data-hd="${s}" aria-label="${longDate(s)}">${L[d.getDay()]}<b>${d.getDate()}</b></button>`}).join('')}
   else{strip.hidden=true;strip.innerHTML=''}
   document.documentElement.style.setProperty('--toph',$('#top').offsetHeight+'px');
   let n=0;for(const l of Object.values(S.lists))n+=(l.tasks||[]).filter(t=>!t.done).length;
@@ -291,11 +291,11 @@ function initRange(d){ui.rStart=addMonths(firstOf(d),-6);ui.rCount=18}
 function weekRowHTML(days,key){
   const td=today(),items=rowItems(days,null,true);let chips='';
   for(const it of items){if(it.k>7)continue;if(it.tk){chips+=taskChip(it,`grid-column:${it.s+1};grid-row:${it.k+2}`);continue}const ev=it.ev,timed=!isTop(ev);
-    chips+=`<button class="ev${isTop(ev)?' ad':''}${it.span?' span':''}" data-ev="${ev.id}" data-d="${it.d}" style="grid-column:${it.s+1}/${it.e+2};grid-row:${it.k+2};--c:${cc(ev)}"><span class="et">${esc(ev.title)}</span>${timed?`<span class="t">${ev.start}</span>`:''}</button>`}
+    chips+=`<button class="ev${isTop(ev)?' ad':''}${it.span?' span':''}${days[it.e]<td?' past':''}" data-ev="${ev.id}" data-d="${it.d}" style="grid-column:${it.s+1}/${it.e+2};grid-row:${it.k+2};--c:${cc(ev)}"><span class="et">${esc(ev.title)}</span>${timed?`<span class="t">${ev.start}</span>`:''}</button>`}
   let bg='',heads='';
   days.forEach((d,i)=>{if(!d)return;const dt=parse(d),evs=eventsOn(d);
     bg+=`<button class="dbg" data-day="${d}" style="grid-column:${i+1}" aria-label="${longDate(d)}${evs.length?', '+evs.length+' events':''}"></button>`;
-    heads+=`<div class="dh" style="grid-column:${i+1}"><span class="dn${d===td?' today':''}${isWE(dt)?' we':''}">${dt.getDate()}</span><span class="dots">${evs.slice(0,3).map(e=>`<i style="--c:${cc(e)}"></i>`).join('')}${evs.length<3&&tasksDue(d).some(x=>!x.t.done)?'<i class="task"></i>':''}</span></div>`});
+    heads+=`<div class="dh${d<td?' past':''}" style="grid-column:${i+1}"><span class="dn${d===td?' today':''}${isWE(dt)?' we':''}${d<td?' past':''}">${dt.getDate()}</span><span class="dots">${evs.slice(0,3).map(e=>`<i style="--c:${cc(e)}"></i>`).join('')}${evs.length<3&&tasksDue(d).some(x=>!x.t.done)?'<i class="task"></i>':''}</span></div>`});
   return `<div class="wrow" data-w="${key}">${bg}${heads}${chips}</div>`;
 }
 function monthSection(m){
@@ -339,7 +339,7 @@ addEventListener('scroll',()=>{if(quiet||ui.view!=='month')return;if(scT)return;
 /* ---- timelines ---- */
 function hoursHTML(){let h='';for(let i=0;i<24;i++){h+=`<div class="hr" style="top:calc(var(--hour)*${i})"><span>${i?pad(i)+':00':''}</span></div>`;
   h+=`<div class="hr half" style="top:calc(var(--hour)*${i+.5});display:var(--halfs,none)"></div>`}return h}
-function blkHTML(e,d){return `<button class="blk" data-ev="${e.id}" data-d="${d}" style="--c:${cc(e)};top:calc(var(--hour)*${e.s/60});height:calc(var(--hour)*${(e.e-e.s)/60} - 2px);left:calc(${e.lane}*100%/${e.n});width:calc(100%/${e.n} - 2px)"><b>${esc(e.title)}</b><small>${fromMin(e.s)}${e.loc?' · '+esc(e.loc):''}</small></button>`}
+function blkHTML(e,d){const t=today(),n=new Date(),past=d<t||(d===t&&e.e<=n.getHours()*60+n.getMinutes());return `<button class="blk${past?' past':''}" data-ev="${e.id}" data-d="${d}" style="--c:${cc(e)};top:calc(var(--hour)*${e.s/60});height:calc(var(--hour)*${(e.e-e.s)/60} - 2px);left:calc(${e.lane}*100%/${e.n});width:calc(100%/${e.n} - 2px)"><b>${esc(e.title)}</b><small>${fromMin(e.s)}${e.loc?' · '+esc(e.loc):''}</small></button>`}
 function nowHTML(days){if(!days.includes(today()))return '';const n=new Date(),mm=n.getHours()*60+n.getMinutes();
   return `<div class="now" style="top:calc(var(--hour)*${mm/60})"></div><div class="nowlbl" style="top:calc(var(--hour)*${mm/60})">${fromMin(mm)}</div>`}
 function allDayHTML(days){
@@ -347,7 +347,7 @@ function allDayHTML(days){
   return `<div class="alld"><span class="adl">all-day</span><div class="adgrid" style="grid-template-columns:repeat(${days.length},minmax(0,1fr))">${items.map(it=>it.tk?taskChip(it,`grid-column:${it.s+1};grid-row:${it.k+1}`):`<button class="ev ad${it.span?' span':''}" data-ev="${it.ev.id}" data-d="${it.d}" style="grid-column:${it.s+1}/${it.e+2};grid-row:${it.k+1};--c:${cc(it.ev)}"><span class="et">${esc(it.ev.title)}</span></button>`).join('')}</div></div>`;
 }
 function timelineHTML(days){
-  return `${allDayHTML(days)}<div class="tl" id="tl">${hoursHTML()}<div class="cols${days.length>1&&innerWidth<640?' narrow':''}" style="grid-template-columns:repeat(${days.length},minmax(0,1fr))">${days.map(d=>`<div class="col" data-col="${d}">${lanesFor(eventsOn(d)).map(e=>blkHTML(e,d)).join('')}</div>`).join('')}</div>${nowHTML(days)}</div>`;
+  return `${allDayHTML(days)}<div class="tl" id="tl">${hoursHTML()}<div class="cols${days.length>1&&innerWidth<640?' narrow':''}" style="grid-template-columns:repeat(${days.length},minmax(0,1fr))">${days.map(d=>`<div class="col${d<today()?' past':''}" data-col="${d}">${lanesFor(eventsOn(d)).map(e=>blkHTML(e,d)).join('')}</div>`).join('')}</div>${nowHTML(days)}</div>`;
 }
 function weekHTML(){return timelineHTML(weekDays(ui.sel))}
 function dayHTML(){return timelineHTML([ui.sel])}
@@ -371,7 +371,7 @@ function positionTimeline(minute,oy){
 function yearHTML(){
   const y=ui.year,t=today(),now=new Date();let h='';
   for(let m=0;m<12;m++){const f=new Date(y,m,1),off=offOf(f),dim=new Date(y,m+1,0).getDate();let g='';
-    for(let i=0;i<off;i++)g+='<i></i>';for(let n=1;n<=dim;n++){const d=ymd(new Date(y,m,n));g+=`<i class="${d===t?'today':''}">${n}</i>`}
+    for(let i=0;i<off;i++)g+='<i></i>';for(let n=1;n<=dim;n++){const d=ymd(new Date(y,m,n));g+=`<i class="${d===t?'today':d<t?'past':''}">${n}</i>`}
     h+=`<button class="ym" data-m="${ymd(f)}" aria-label="${MONTHS[m]} ${y}"><h3 class="${y===now.getFullYear()&&m===now.getMonth()?'cur':''}">${M3[m]}</h3><div class="ymg">${g}</div></button>`}
   return `<div class="year">${h}</div>`;
 }

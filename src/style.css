@@ -336,3 +336,15 @@ span.tt{display:block;overflow-wrap:anywhere;cursor:text;line-height:1.3}
 .syncdot{position:absolute;top:7px;right:7px;width:8px;height:8px;border-radius:50%;display:none}
 .syncdot[data-m="offline"]{display:block;background:var(--muted)}
 .syncdot[data-m="error"]{display:block;background:#FF9F0A}
+
+/* past days read as gone */
+.dn.past{color:var(--muted);opacity:.6}
+.dh.past .dots{opacity:calc(var(--do) * .45)}
+.ev.past{opacity:calc(var(--co) * .5);filter:saturate(.4)}
+.alld .ev.past{opacity:.5}
+.hd.past b{color:var(--muted);opacity:.7}
+.hd.past.sel b{color:var(--bg);opacity:1}
+.ymg i.past{color:var(--muted);opacity:.6}
+.col.past{background:color-mix(in srgb,var(--fill) 45%,transparent)}
+.blk.past{opacity:.5;filter:saturate(.4)}
+.blk.past.lift{opacity:1;filter:none}
