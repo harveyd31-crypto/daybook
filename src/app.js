@@ -53,6 +53,7 @@ const I={
   end:svg('<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>'),
   notes:svg('<path d="M5 4.5h14v15H5z"/><path d="M8.5 9h7M8.5 12.5h7M8.5 16h4"/>'),
   link:svg('<path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/>'),
+  grip:'<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><circle cx="9" cy="6" r="1.7"/><circle cx="15" cy="6" r="1.7"/><circle cx="9" cy="12" r="1.7"/><circle cx="15" cy="12" r="1.7"/><circle cx="9" cy="18" r="1.7"/><circle cx="15" cy="18" r="1.7"/></svg>',
   search:svg('<circle cx="10.5" cy="10.5" r="6.5"/><path d="m20 20-4.6-4.6"/>','style="width:18px;height:18px;color:var(--muted)"')};
 
 /* ================= storage: local cache + Supabase sync ================= */
@@ -191,8 +192,8 @@ const sv=lsGet(LSUI)||{};
 const ROWMIN=58, HMIN=22, HMAX=170;
 const rowMax=()=>innerWidth>=700?240:204;
 const ui={view:['year','month','week','day','list'].includes(sv.view)?sv.view:'month',ws:sv.ws??0,pinchRev:!!sv.pinchRev,
-  rowH:sv.rowH||112,hourH:sv.hourH||56,sel:today(),year:new Date().getFullYear(),rStart:null,rCount:0,visM:firstOf(today())};
-let uiT=0;function saveUi(){clearTimeout(uiT);uiT=setTimeout(()=>lsSet(LSUI,{view:ui.view,ws:ui.ws,pinchRev:ui.pinchRev,rowH:Math.round(ui.rowH),hourH:Math.round(ui.hourH)}),300)}
+  rowH:sv.rowH||112,hourH:sv.hourH||56,sel:today(),year:new Date().getFullYear(),rStart:null,rCount:0,visM:firstOf(today()),duoPref:sv.duoPref!==false,sideM:firstOf(today()),sideFollow:null};
+let uiT=0;function saveUi(){clearTimeout(uiT);uiT=setTimeout(()=>lsSet(LSUI,{view:ui.view,ws:ui.ws,pinchRev:ui.pinchRev,duoPref:ui.duoPref,rowH:Math.round(ui.rowH),hourH:Math.round(ui.hourH)}),300)}
 const setSel=d=>{ui.sel=d};
 const offOf=d=>(d.getDay()-ui.ws+7)%7;
 const weekStart=s=>{const d=parse(s);return addDays(d,-offOf(d))};
@@ -253,7 +254,7 @@ function lanesFor(evs){
 const view=$('#view'),pane=$('#pane');
 let rq=0,dirty=false;
 function scheduleRender(){if(rq)return;rq=requestAnimationFrame(()=>{rq=0;render()})}
-function busy(){return G.mode==='drag'||G.mode==='pinch'||!!P}
+function busy(){return G.mode==='drag'||G.mode==='pinch'||!!P||!!(td&&td.active)}
 function render(o={}){
   onCache=null;taskIdx=null;
   if(busy()&&!o.force){dirty=true;return}
@@ -261,7 +262,7 @@ function render(o={}){
   if(ui.view==='month'){const a=o.noAnchor?null:captureAnchor();pane.innerHTML=monthHTML();setRowH(ui.rowH);if(a)restoreAnchor(a)}
   else{pane.innerHTML=ui.view==='week'?weekHTML():ui.view==='day'?dayHTML():ui.view==='year'?yearHTML():listHTML()}
   view.style.setProperty('--hour',ui.hourH+'px');
-  renderHeader();renderPanels();
+  renderHeader();renderSide();renderPanels();
 }
 function flushDirty(){if(dirty)render()}
 const topH=()=>$('#top').getBoundingClientRect().bottom;
@@ -547,7 +548,7 @@ function longPress(){
 function startChipDrag(chip,x,y){haptic();const r=chip.getBoundingClientRect(),gh=chip.cloneNode(true);gh.classList.add('ghost');gh.style.width=r.width+'px';gh.style.height=r.height+'px';
   gh.style.transform=`translate(${r.left}px,${r.top}px) scale(1.06)`;document.body.appendChild(gh);chip.style.opacity='.3';
   G.mode='drag';G.drag={kind:'chip',id:chip.dataset.ev,task:chip.dataset.task?chip.dataset.task.split('|'):null,ghost:gh,src:chip,gx:x-r.left,gy:y-r.top,from:dropDayAt(x,y)?.d||chip.dataset.d,over:null,to:null};autoScroll()}
-function dropDayAt(x,y){for(const el of document.elementsFromPoint(x,y)){if(!el.closest)continue;const h=el.closest('[data-hd]');if(h)return{d:h.dataset.hd,el:h};const b=el.closest('.dbg');if(b&&pane.contains(b))return{d:b.dataset.day,el:b}}
+function dropDayAt(x,y){for(const el of document.elementsFromPoint(x,y)){if(!el.closest)continue;const sd=el.closest('[data-dropday]');if(sd)return{d:sd.dataset.dropday,el:sd};const h=el.closest('[data-hd]');if(h)return{d:h.dataset.hd,el:h};const b=el.closest('.dbg');if(b&&pane.contains(b))return{d:b.dataset.day,el:b}}
   if((ui.view==='week'||ui.view==='day')&&y>topH()){const d=colDayAt(x);if(d)return{d,el:null}}return null}
 function makeDraft(day,s,e){
   const c=pane.querySelector(`.col[data-col="${day}"]`);if(!c)return null;
@@ -608,7 +609,51 @@ $('#b-search').onclick=()=>sheetOpen(searchPage(),{detent:'large'});
 addEventListener('keydown',e=>{if(!$('#sheet').hidden||e.target.matches('input,textarea,select'))return;
   if(e.key==='ArrowLeft'&&['day','week','year'].includes(ui.view))slide(-1);else if(e.key==='ArrowRight'&&['day','week','year'].includes(ui.view))slide(1);
   else if(e.key==='t')$('#b-today').click()});
-let rzT=0;addEventListener('resize',()=>{clearTimeout(rzT);rzT=setTimeout(()=>render(),120)});
+let rzT=0;addEventListener('resize',()=>{clearTimeout(rzT);rzT=setTimeout(()=>{if(applyDuo())go(ui.view,{date:ui.sel});else render()},120)});
+
+/* ---- two-pane layout for the unfolded Fold, tablets and the Mac ---- */
+const side=$('#side');let duoReady=false;
+function applyDuo(){const want=ui.duoPref&&innerWidth>=720&&innerHeight>=460,root=document.documentElement,was=root.classList.contains('duo');
+  if(want===was)return false;root.classList.toggle('duo',want);side.hidden=!want;
+  if(want&&duoReady&&(ui.view==='month'||ui.view==='year'||ui.view==='list'))ui.view='day';
+  return true}
+function renderSide(){
+  if(!document.documentElement.classList.contains('duo'))return;
+  if(ui.sideFollow!==ui.sel){ui.sideFollow=ui.sel;ui.sideM=firstOf(ui.sel)}
+  const m=ui.sideM,start=addDays(m,-offOf(m)),td=today(),wk=weekDays(ui.sel),L=['S','M','T','W','T','F','S'];
+  let g='';
+  for(let i=0;i<42;i++){const dt=addDays(start,i),d=ymd(dt),out=dt.getMonth()!==m.getMonth(),evs=eventsOn(d),tk=tasksDue(d).some(x=>!x.t.done),iw=wk.includes(d),c=i%7;
+    g+=`<button class="sd-d${out?' out':''}${d<td?' past':''}${d===td?' today':''}${d===ui.sel?' sel':''}${iw?' inweek':''}${iw&&c===0?' wf':''}${iw&&c===6?' wl':''}" data-sd="${d}" data-dropday="${d}" aria-label="${longDate(d)}"><b>${dt.getDate()}</b><span class="sd-dots">${evs.slice(0,3).map(e=>`<i style="--c:${cc(e)}"></i>`).join('')}${tk&&evs.length<3?'<i class="task"></i>':''}</span></button>`}
+  let ag='',shown=0;
+  for(let i=0;i<21&&shown<10;i++){const d=shift(ui.sel,i),evs=eventsOn(d),ts=tasksDue(d);
+    if(!evs.length&&!ts.length&&i>0)continue;shown++;
+    const rel=d===td?'Today':d===shift(td,1)?'Tomorrow':d===shift(td,-1)?'Yesterday':DOW[parse(d).getDay()];
+    ag+=`<section class="sd-day${d<td?' past':''}"><button class="sd-dh${d===ui.sel?' cur':''}" data-sd="${d}" data-dropday="${d}"><b>${rel}</b><span>${shortDate(d)}</span></button>
+      ${evs.map(e=>`<button class="sd-ev" data-ev="${e.id}" data-d="${d}" style="--c:${cc(e)}"><i></i><span><small>${isTop(e)?'All-day':`${e.start} – ${e.end}`}</small>${esc(e.title)}${e.loc?`<em>${esc(e.loc)}</em>`:''}</span></button>`).join('')}
+      ${ts.map(({lid,l,t})=>`<div class="sd-tk" style="--lc:${col(l.color)}"><button class="chk${t.done?' on':''}" data-agchk="${lid}|${t.id}" aria-label="Toggle task"></button><span class="${t.done?'done':''}">${esc(t.text)}</span><em>${esc(l.name)}</em></div>`).join('')}
+      ${!evs.length&&!ts.length?'<p class="sd-none">Nothing scheduled</p>':''}</section>`}
+  side.innerHTML=`<div class="sd-head"><button class="sd-title" data-sdtoday aria-label="Go to today"><b>${MONTHS[m.getMonth()]}</b> <span>${m.getFullYear()}</span></button><span class="sp"></span>
+    <button class="cbtn sm" data-sdnav="-1" aria-label="Previous month">${I.back}</button><button class="cbtn sm flip" data-sdnav="1" aria-label="Next month">${I.back}</button></div>
+    <div class="sd-wd">${[0,1,2,3,4,5,6].map(i=>`<span>${L[(i+ui.ws)%7]}</span>`).join('')}</div><div class="sd-grid">${g}</div><div class="sd-agenda">${ag}</div>`;
+}
+function pickDay(d){
+  if(ui.view==='day')selectDay(d);
+  else if(ui.view==='week'){const same=weekDays(ui.sel).includes(d);setSel(d);render({force:true});if(!same)positionTimeline(null)}
+  else if(ui.view==='month'){setSel(d);positionMonth(d);renderSide()}
+  else go('day',{date:d,dir:1});
+}
+side.addEventListener('click',e=>{
+  const ev=e.target.closest('[data-ev]');if(ev)return openDetail(ev.dataset.ev,ev.dataset.d);
+  const ag=e.target.closest('[data-agchk]');if(ag){const[lid,tid]=ag.dataset.agchk.split('|');haptic();return editList(lid,l=>{const t=findTask(l,tid);if(t)t.done=!t.done})}
+  const n=e.target.closest('[data-sdnav]');if(n){ui.sideM=addMonths(ui.sideM,+n.dataset.sdnav);renderSide();return}
+  if(e.target.closest('[data-sdtoday]'))return pickDay(today());
+  const d=e.target.closest('[data-sd]');if(d)pickDay(d.dataset.sd);
+});
+let sdS=null;
+side.addEventListener('touchstart',e=>{if(!e.target.closest('.sd-grid')||e.touches.length>1)return;sdS={x:e.touches[0].clientX,y:e.touches[0].clientY}},{passive:true});
+side.addEventListener('touchend',e=>{if(!sdS)return;const t=e.changedTouches[0],dx=t.clientX-sdS.x,dy=t.clientY-sdS.y;sdS=null;
+  if(Math.abs(dx)>50&&Math.abs(dx)>Math.abs(dy)*1.4){ui.sideM=addMonths(ui.sideM,dx<0?1:-1);renderSide();haptic()}});
+side.addEventListener('contextmenu',e=>e.preventDefault());
 
 /* view menu */
 const menu=$('#menu');
@@ -801,7 +846,8 @@ function calsPage(){
         <div class="sec"><h4>Preferences</h4><div class="group">
           <button class="row nav" data-defcal><span>Default Calendar</span><span class="val"><span class="vt">${esc(calOf(st.defaultCal).name)}</span></span></button>
           <div class="row"><span>Week Starts On</span><div class="mseg"><button data-ws="0" aria-pressed="${ui.ws===0}">Sunday</button><button data-ws="1" aria-pressed="${ui.ws===1}">Monday</button></div></div>
-          <div class="row"><span>Reverse Pinch</span><input type="checkbox" class="sw" id="prv" ${ui.pinchRev?'checked':''}></div></div>
+          <div class="row"><span>Reverse Pinch</span><input type="checkbox" class="sw" id="prv" ${ui.pinchRev?'checked':''}></div>
+          <div class="row"><span>Two-Pane Layout on Wide Screens</span><input type="checkbox" class="sw" id="duo" ${ui.duoPref?'checked':''}></div></div>
           <p class="note" style="margin-top:8px">Spread two fingers on the month to see more of each event, keep spreading to open the week, then the day. Pinch to go back out to the year.</p></div>
         ${syncStatusHTML()}
         <div class="group"><button class="row" data-export>Export Backup</button><label class="row" style="cursor:pointer">Import Backup<input type="file" accept=".json,application/json" id="imp" hidden></label></div>
@@ -814,6 +860,7 @@ function calsPage(){
       el.querySelector('[data-defcal]').onclick=()=>pushPage(choicePage('Default Calendar',settings().cals.map(c=>({k:c.id,label:c.name,color:col(c.color)})),settings().defaultCal,k=>{const s=clone(settings());s.defaultCal=k;put('settings',s)}));
       el.querySelectorAll('[data-ws]').forEach(b=>b.onclick=()=>{ui.ws=+b.dataset.ws;saveUi();el.querySelectorAll('[data-ws]').forEach(x=>x.setAttribute('aria-pressed',x===b));if(ui.view==='month'){initRange(ymd(ui.visM));render({noAnchor:true});positionMonth(ymd(ui.visM),null,true)}else render()});
       el.querySelector('#prv').onchange=e=>{ui.pinchRev=e.target.checked;saveUi()};
+      el.querySelector('#duo').onchange=e=>{ui.duoPref=e.target.checked;saveUi();if(applyDuo())go(ui.view,{date:ui.sel})};
       el.querySelector('[data-export]').onclick=exportData;
       el.querySelector('#imp').onchange=e=>importFile(e.target.files[0]);
       el.querySelector('[data-signout]')?.addEventListener('click',signOut);
@@ -893,15 +940,16 @@ function importFile(f){if(!f)return;const r=new FileReader();
 
 /* ================= floating task windows ================= */
 const floats=$('#floats'),dock=$('#dock');
-let editingTask=null,noFloatClick=0,td=null;
+let editingTask=null,noFloatClick=0,td=null,panelsDirty=false;
 let zTop=1;const zMap={};
 const panelW=()=>Math.min(300,innerWidth-32);
 function defaultPos(i){const w=panelW();return{x:Math.max(8,innerWidth-w-16-i*18),y:Math.max(150,innerHeight-480+i*26)}}
 function taskRow(t){const late=t.due&&!t.done&&t.due<today();
   return `<li class="task${t.done?' is-done':''}" data-t="${t.id}"><button class="chk" data-act="check" aria-label="${t.done?'Mark not done':'Mark done'}"></button>
     ${editingTask===t.id?`<input class="tt" id="tt-${t.id}" value="${esc(t.text)}" aria-label="Task" enterkeyhint="done">`:`<span class="tt" data-act="edit">${esc(t.text)}</span>`}
-    ${t.due?`<button class="due${late?' late':''}" data-act="date" aria-label="Change date">${dueLabel(t.due)}</button>`:`<button class="mini" data-act="date" aria-label="Add to a date">${I.cal}</button>`}<button class="mini" data-act="rm" aria-label="Delete task">${I.x}</button></li>`}
+    ${t.due?`<button class="due${late?' late':''}" data-act="date" aria-label="Change date">${dueLabel(t.due)}</button>`:`<button class="mini" data-act="date" aria-label="Add to a date">${I.cal}</button>`}<button class="mini" data-act="rm" aria-label="Delete task">${I.x}</button><span class="grip" data-grip aria-label="Drag to a day" role="img">${I.grip}</span></li>`}
 function renderPanels(){
+  if(td&&td.active){panelsDirty=true;return}
   const act=document.activeElement,aid=act&&floats.contains(act)?act.id:null,sel=aid&&act.selectionStart!=null?[act.selectionStart,act.selectionEnd]:null;
   const open=Array.from(floats.querySelectorAll('.task.dating')).map(li=>li.dataset.t);
   const entries=Object.entries(S.lists).sort((a,b)=>(a[1].created||0)-(b[1].created||0));
@@ -954,26 +1002,51 @@ floats.addEventListener('pointercancel',()=>{if(pdrag){pdrag.p.style.opacity='';
 dock.addEventListener('click',e=>{const b=e.target.closest('[data-undock]');if(!b)return;zMap[b.dataset.undock]=++zTop;editList(b.dataset.undock,l=>l.state='float')});
 
 floats.addEventListener('focusout',e=>{if(e.target.matches('input.tt')&&editingTask){editingTask=null;setTimeout(renderPanels,0)}});
-function tdStart(){if(!td)return;const l=S.lists[td.lid],t=l&&findTask(l,td.tid);if(!t){td=null;return}td.active=true;haptic();
+function tdBegin(row,x,y,mouse,instant){const p=row.closest('.panel');if(!p)return;
+  td={row,lid:p.dataset.l,tid:row.dataset.t,x0:x,y0:y,x,y,active:false,mouse};if(instant)tdStart();else if(!mouse)td.timer=setTimeout(tdStart,300)}
+function tdStart(){if(!td||td.active)return;const l=S.lists[td.lid],t=l&&findTask(l,td.tid);if(!t){td=null;return}td.active=true;haptic();
+  document.querySelectorAll('.tghost').forEach(x=>x.remove());
   const g=document.createElement('div');g.className='tghost glass';g.style.setProperty('--lc',col(l.color));g.innerHTML=`<span>${esc(t.text)}</span><small>Drop on a day</small>`;
-  document.body.appendChild(g);td.g=g;td.row.style.opacity='.35';td.panel=td.row.closest('.panel');td.panel?.classList.add('dragging');tdMove();tdAuto()}
-function tdMove(){const{x,y,g}=td;g.style.transform=`translate(${Math.min(x+14,innerWidth-250)}px,${y-30}px)`;const t=dropDayAt(x,y),el=t?.el||null;
+  document.body.appendChild(g);td.g=g;td.row.style.opacity='.35';td.panel=td.row.closest('.panel');td.panel?.classList.add('dragging');
+  document.documentElement.classList.add('tdrag');tdMove();tdAuto()}
+function tdMove(){if(!td||!td.g)return;const{x,y,g}=td;g.style.transform=`translate(${clamp(x-28,6,innerWidth-200)}px,${clamp(y-58,6,innerHeight-60)}px)`;
+  const t=dropDayAt(x,y),el=t?.el||null;
   if(td.over!==el){td.over?.classList.remove('drop');el?.classList.add('drop');td.over=el}
-  const to=t?.d||null;if(td.to!==to){td.to=to;if(to)haptic();g.querySelector('small').textContent=to?cardDate(to):'Drop on a day'}}
-function tdEnd(cancel){const d=td;td=null;if(!d)return;clearTimeout(d.timer);if(!d.active)return;noFloatClick=performance.now()+450;
-  d.g.remove();d.over?.classList.remove('drop');d.row.style.opacity='';d.panel?.classList.remove('dragging');
-  if(!cancel&&d.to){editList(d.lid,l=>{const t=findTask(l,d.tid);if(t)t.due=d.to});toast(`Added to ${longDate(d.to)}`)}}
+  const to=t?.d||null;if(td.to!==to){td.to=to;if(to)haptic();g.querySelector('small').textContent=to?cardDate(to):'Drop on a day';g.classList.toggle('ok',!!to)}}
+function tdEnd(cancel){const d=td;td=null;if(!d)return;tdDetach(d);clearTimeout(d.timer);if(!d.active)return;noFloatClick=performance.now()+450;
+  document.documentElement.classList.remove('tdrag');d.panel?.classList.remove('dragging');
+  floats.querySelectorAll('.panel.dragging').forEach(p=>p.classList.remove('dragging'));
+  const ok=!cancel&&d.to,g=d.g,from=g.style.transform;let to;
+  if(ok&&d.over){const r=d.over.getBoundingClientRect();to=`translate(${r.left+r.width/2-30}px,${r.top+r.height/2-14}px) scale(.25)`}
+  else if(ok)to=from+' scale(.25)';
+  else{const r=d.row.isConnected?d.row.getBoundingClientRect():null;to=r?`translate(${r.left}px,${r.top}px)`:from+' scale(.8)'}
+  d.over?.classList.remove('drop');
+  try{g.animate([{transform:from,opacity:1},{transform:to,opacity:ok?0:.3}],{duration:230,easing:'cubic-bezier(.2,.9,.25,1)',fill:'forwards'})}catch(e){}
+  setTimeout(()=>{g.remove();document.querySelectorAll('.tghost').forEach(x=>x.remove())},260);
+  if(d.row.isConnected)d.row.style.opacity='';
+  if(ok){editList(d.lid,l=>{const t=findTask(l,d.tid);if(t)t.due=d.to});haptic();toast(`Added to ${longDate(d.to)}`)}
+  if(panelsDirty){panelsDirty=false;renderPanels()}flushDirty()}
 function tdAuto(){const loop=()=>{if(!td||!td.active)return;const top=topH()+20,bot=innerHeight-100;let v=0;
   if(td.y<top)v=-Math.min(14,(top-td.y)/3);else if(td.y>bot)v=Math.min(14,(td.y-bot)/3);if(v){window.scrollBy(0,v);tdMove()}requestAnimationFrame(loop)};requestAnimationFrame(loop)}
-floats.addEventListener('touchstart',e=>{const row=e.target.closest('.task');if(!row||e.touches.length>1||e.target.closest('button,input'))return;const t=e.touches[0];
-  td={row,lid:row.closest('.panel').dataset.l,tid:row.dataset.t,x0:t.clientX,y0:t.clientY,x:t.clientX,y:t.clientY,active:false};td.timer=setTimeout(tdStart,360)},{passive:true});
-floats.addEventListener('touchmove',e=>{if(!td||td.mouse)return;const t=e.touches[0];td.x=t.clientX;td.y=t.clientY;
-  if(td.active){e.preventDefault();tdMove()}else if(Math.hypot(td.x-td.x0,td.y-td.y0)>8){clearTimeout(td.timer);td=null}},{passive:false});
-floats.addEventListener('touchend',()=>{if(td&&!td.mouse)tdEnd(false)});floats.addEventListener('touchcancel',()=>{if(td&&!td.mouse)tdEnd(true)});
-floats.addEventListener('pointerdown',e=>{if(e.pointerType!=='mouse'||e.button!==0)return;const row=e.target.closest('.task');if(!row||e.target.closest('button,input'))return;
-  td={row,lid:row.closest('.panel').dataset.l,tid:row.dataset.t,x0:e.clientX,y0:e.clientY,x:e.clientX,y:e.clientY,active:false,mouse:true}});
+/* start on the panel; follow and finish on the window, so a redraw of the panel can never strand the drag */
+floats.addEventListener('touchstart',e=>{if(td||e.touches.length>1)return;const row=e.target.closest('.task');if(!row)return;
+  const grip=e.target.closest('[data-grip]');if(!grip&&e.target.closest('button,input'))return;const t=e.touches[0];tdBegin(row,t.clientX,t.clientY,false,!!grip);if(td)tdAttach(td,e.target)},{passive:true});
+function tdTM(e){if(!td||td.mouse)return;const t=e.touches[0];if(!t)return;td.x=t.clientX;td.y=t.clientY;
+  if(td.active){if(e.cancelable)e.preventDefault();tdMove()}else if(Math.hypot(td.x-td.x0,td.y-td.y0)>10){clearTimeout(td.timer);tdDetach(td);td=null}}
+function tdTE(e){if(td&&!td.mouse&&!e.touches.length){tdDetach(td);tdEnd(false)}}
+function tdTC(){if(td&&!td.mouse){tdDetach(td);tdEnd(true)}}
+/* a touch keeps reporting to the element it began on, even if that element is redrawn away, so listen there too */
+function tdAttach(d,el){d.tgt=el;el.addEventListener('touchmove',tdTM,{passive:false});el.addEventListener('touchend',tdTE);el.addEventListener('touchcancel',tdTC)}
+function tdDetach(d){const el=d&&d.tgt;if(!el)return;el.removeEventListener('touchmove',tdTM);el.removeEventListener('touchend',tdTE);el.removeEventListener('touchcancel',tdTC);d.tgt=null}
+addEventListener('touchmove',tdTM,{passive:false,capture:true});
+addEventListener('touchend',tdTE,{capture:true});
+addEventListener('touchcancel',tdTC,{capture:true});
+floats.addEventListener('pointerdown',e=>{if(e.pointerType!=='mouse'||e.button!==0||td)return;const row=e.target.closest('.task');if(!row)return;
+  if(!e.target.closest('[data-grip]')&&e.target.closest('button,input'))return;tdBegin(row,e.clientX,e.clientY,true,false)});
 addEventListener('pointermove',e=>{if(!td||!td.mouse)return;td.x=e.clientX;td.y=e.clientY;if(!td.active){if(Math.hypot(td.x-td.x0,td.y-td.y0)>6)tdStart()}else tdMove()});
 addEventListener('pointerup',()=>{if(td&&td.mouse)tdEnd(false)});
+addEventListener('blur',()=>{if(td)tdEnd(true)});
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&td)tdEnd(true)});
 
 function datePage(lid,tid){
   return{title:'Date',html(){const l=S.lists[lid],t=l&&findTask(l,tid);if(!t)return '';const td0=today(),dw=parse(td0).getDay();
@@ -1011,6 +1084,7 @@ let tt;function toast(m){const t=$('#toast');t.textContent=m;t.hidden=false;clea
 const local=lsGet(LS);
 if(local){S.events=local.events||{};S.lists=local.lists||{};S.settings=local.settings||null}
 setHour(ui.hourH);
+applyDuo();duoReady=true;
 go(ui.view,{date:ui.sel,toSection:ui.view==='month'});
 setInterval(()=>{if((ui.view==='day'||ui.view==='week')&&sheetEl.hidden&&!busy())render()},60000);
 (async()=>{

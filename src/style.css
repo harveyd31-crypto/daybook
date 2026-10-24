@@ -348,3 +348,60 @@ span.tt{display:block;overflow-wrap:anywhere;cursor:text;line-height:1.3}
 .col.past{background:color-mix(in srgb,var(--fill) 45%,transparent)}
 .blk.past{opacity:.5;filter:saturate(.4)}
 .blk.past.lift{opacity:1;filter:none}
+
+/* task drag */
+.grip{width:30px;height:34px;display:grid;place-items:center;color:var(--muted);touch-action:none;cursor:grab;flex:none;margin-right:-6px;opacity:.7}
+.grip:active{color:var(--lc);opacity:1}
+.tdrag,.tdrag *{-webkit-user-select:none!important;user-select:none!important}
+.tghost{will-change:transform;transition:background .15s}
+.tghost.ok{background:color-mix(in srgb,var(--lc) 22%,var(--glass))}
+.dbg.drop{background:color-mix(in srgb,var(--accent) 22%,transparent)!important;box-shadow:inset 0 0 0 2px var(--accent)}
+
+/* two-pane layout */
+:root{--side:0px}
+html.duo{--side:50vw}
+@media (min-width:1100px){html.duo{--side:380px}}
+@media (horizontal-viewport-segments:2){html.duo{--side:env(viewport-segment-width 0 0,50vw)}}
+html.duo body{padding-left:calc(var(--side) + 16px)}
+html.duo .bot{left:var(--side)}
+#side{position:fixed;left:0;top:0;bottom:0;width:var(--side);z-index:27;background:var(--sheet);border-right:.5px solid var(--line);overflow-y:auto;overscroll-behavior:contain;
+  padding:calc(var(--sa-top) + 16px) 18px calc(var(--sa-bottom) + 40px) max(18px,var(--sa-left));display:flex;flex-direction:column;gap:12px;-webkit-overflow-scrolling:touch}
+.sd-head{display:flex;align-items:center;gap:8px;padding-top:6px}
+.sd-title{font-size:30px;font-weight:700;letter-spacing:-.022em;text-align:left;line-height:1.1}
+.sd-title span{color:var(--accent)}
+.cbtn.sm{width:38px;height:38px}
+.cbtn.sm .ico{width:18px;height:18px}
+.cbtn.flip .ico{transform:scaleX(-1)}
+.sd-wd{display:grid;grid-template-columns:repeat(7,1fr);text-align:center;font-size:11px;font-weight:600;color:var(--muted);letter-spacing:.04em}
+.sd-grid{display:grid;grid-template-columns:repeat(7,1fr);row-gap:2px;touch-action:pan-y}
+.sd-d{display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0 5px;min-width:0;transition:background .15s}
+.sd-d b{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;font-size:16px;font-weight:500;font-variant-numeric:tabular-nums;transition:background .2s,color .2s}
+.sd-d.past b{color:var(--muted)}
+.sd-d.out b{color:var(--muted);opacity:.4}
+.sd-d.inweek{background:var(--fill)}
+.sd-d.wf{border-radius:14px 0 0 14px}.sd-d.wl{border-radius:0 14px 14px 0}
+.sd-d.today b{color:var(--accent);font-weight:700}
+.sd-d.sel b{background:var(--fg);color:var(--bg);font-weight:600}
+.sd-d.sel.today b{background:var(--accent);color:#fff}
+.sd-d.drop b,.sd-dh.drop{background:color-mix(in srgb,var(--accent) 30%,transparent);box-shadow:0 0 0 2px var(--accent)}
+.sd-dots{display:flex;gap:2px;height:5px}
+.sd-dots i{width:5px;height:5px;border-radius:50%;background:var(--c)}
+.sd-dots i.task{background:none;border:1.2px solid var(--muted)}
+.sd-agenda{display:flex;flex-direction:column;gap:4px;border-top:.5px solid var(--line);padding-top:6px}
+.sd-day{display:flex;flex-direction:column;gap:1px;padding-bottom:8px;border-bottom:.5px solid var(--line)}
+.sd-day:last-child{border-bottom:0}
+.sd-day.past{opacity:.55}
+.sd-dh{display:flex;justify-content:space-between;align-items:baseline;padding:8px 6px;text-align:left;border-radius:10px;transition:background .15s}
+.sd-dh b{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+.sd-dh.cur b{color:var(--accent)}
+.sd-dh span{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.sd-ev{display:flex;gap:10px;align-items:flex-start;text-align:left;padding:7px 6px;border-radius:12px;transition:background .15s}
+.sd-ev:active,.sd-dh:active,.sd-d:active{background:var(--fill2)}
+.sd-ev>i{width:10px;height:10px;border-radius:50%;background:var(--c);margin-top:4px;flex:none}
+.sd-ev span{display:flex;flex-direction:column;font-size:16px;font-weight:500;min-width:0;overflow-wrap:anywhere;line-height:1.3}
+.sd-ev small{font-size:13px;color:var(--muted);font-weight:500;font-variant-numeric:tabular-nums}
+.sd-ev em,.sd-tk em{font-style:normal;font-size:13px;color:var(--muted);font-weight:400}
+.sd-tk{display:flex;gap:10px;align-items:center;padding:6px 6px;font-size:15px}
+.sd-tk span{flex:1;min-width:0;overflow-wrap:anywhere}
+.sd-tk .done{text-decoration:line-through;color:var(--muted)}
+.sd-none{margin:0 6px 4px;color:var(--muted);font-size:14px}
