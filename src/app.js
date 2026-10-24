@@ -155,10 +155,12 @@ function seedWelcome(){
 }
 
 /* sign-in screen */
-function serverCfg(){const c=lsGet(LSCFG)||{};return{url:c.url||import.meta.env.VITE_SUPABASE_URL||'',key:c.key||import.meta.env.VITE_SUPABASE_ANON_KEY||''}}
+/* Public project address and publishable key: safe to ship, data is protected by sign-in and row-level security. */
+const DEFAULT_SERVER={url:'https://bfybypdzttvahljnxgfl.supabase.co',key:'sb_publishable_zwYFbpyF0Ps9UiLxrTJHMg_UGMrNxDX'};
+function serverCfg(){const c=lsGet(LSCFG)||{};return{url:c.url||import.meta.env.VITE_SUPABASE_URL||DEFAULT_SERVER.url,key:c.key||import.meta.env.VITE_SUPABASE_ANON_KEY||DEFAULT_SERVER.key}}
 function makeClient(cfg){return createClient(cfg.url,cfg.key,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false,storageKey:'daybook-auth'}})}
 function showAuth(msg){
-  const cfg=serverCfg(),el=document.getElementById('auth'),built=!!(import.meta.env.VITE_SUPABASE_URL&&import.meta.env.VITE_SUPABASE_ANON_KEY);
+  const cfg=serverCfg(),el=document.getElementById('auth'),built=!!(cfg.url&&cfg.key);
   el.innerHTML=`<form class="authcard" id="authf" autocomplete="on">
     <div class="authlogo" aria-hidden="true"><span></span><b>${new Date().getDate()}</b></div>
     <h1>Daybook</h1><p class="note" style="text-align:center;margin:0 0 6px">Sign in to sync your calendar and tasks between your devices.</p>
