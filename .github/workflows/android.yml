@@ -1,0 +1,60 @@
+name: Build Android app
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-apk
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build web app
+        run: npm run build
+        env:
+          VITE_SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
+
+      - run: npx cap sync android
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build APK
+        run: |
+          chmod +x android/gradlew
+          cd android && ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - run: cp android/app/build/outputs/apk/release/app-release.apk Daybook.apk
+
+      - name: Publish to the "Daybook for Android" release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-latest
+          name: Daybook for Android
+          body: |
+            Latest build: #${{ github.run_number }} from ${{ github.sha }}.
+            On your Fold, open this page and tap **Daybook.apk** to install or update.
+          files: Daybook.apk
+          make_latest: true
+          overwrite_files: true

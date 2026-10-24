@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Daybook</title>
+<link rel="icon" href="./icon.svg">
+<link rel="manifest" href="./manifest.webmanifest">
+</head>
+<body>
+<header class="top" id="top">
+  <div class="bar1">
+    <button class="back glass" id="b-back"><svg class="ico" viewBox="0 0 24 24" style="width:26px;height:26px"><path d="m15 5-7 7 7 7"/></svg><span id="backlbl"></span></button>
+    <span class="sp"></span>
+    <div class="cap glass">
+      <button class="ib" id="b-mode" aria-label="Choose view" aria-haspopup="menu"><svg class="ico" viewBox="0 0 24 24"><rect x="3.5" y="4" width="17" height="7" rx="2.2"/><rect x="3.5" y="13" width="17" height="7" rx="2.2"/><path d="M7 16.5h6"/></svg></button>
+      <button class="ib" id="b-search" aria-label="Search"><svg class="ico" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m20 20-4.6-4.6"/></svg></button>
+      <button class="ib" id="b-add" aria-label="New event"><svg class="ico" viewBox="0 0 24 24" style="width:26px;height:26px"><path d="M12 4.5v15M4.5 12h15"/></svg></button>
+    </div>
+  </div>
+  <div class="ttl" id="ttl"><h1 id="title"></h1></div>
+  <div class="strip" id="strip"></div>
+  <div class="dateline" id="dateline" hidden></div>
+</header>
+
+<main id="view"><div id="pane"></div></main>
+
+<div class="bot">
+  <button class="todaybtn glass" id="b-today">Today</button>
+  <div class="cap glass">
+    <button class="ib" id="b-cals" aria-label="Calendars and settings"><span class="syncdot" id="syncdot"></span><svg class="ico" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="16" rx="3"/><path d="M3.5 9.5h17"/><path d="M8 13h.01M12 13h.01M16 13h.01M8 16.5h.01M12 16.5h.01M16 16.5h.01" stroke-width="2.6"/></svg></button>
+    <button class="ib" id="b-lists" aria-label="Task lists"><svg class="ico" viewBox="0 0 24 24"><path d="M4 13.5 6.2 6a2 2 0 0 1 1.9-1.5h7.8A2 2 0 0 1 17.8 6l2.2 7.5V18a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M4 13.5h4.5l1 2h5l1-2H20"/></svg><span class="badge" id="tcount" hidden></span></button>
+  </div>
+</div>
+
+<div id="floats"></div>
+<div id="dock"></div>
+<div id="menu" class="menu glass" role="menu" hidden></div>
+<div id="sheet" hidden></div>
+<div id="act" hidden></div>
+<div id="toast" class="glass" hidden></div>
+<div id="auth" hidden></div>
+<script type="module" src="./src/app.js"></script>
+</body>
+</html>

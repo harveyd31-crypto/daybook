@@ -1,0 +1,12 @@
+{
+  "appId": "com.harveyd.daybook",
+  "appName": "Daybook",
+  "webDir": "dist",
+  "android": {
+    "backgroundColor": "#000000",
+    "allowMixedContent": false
+  },
+  "plugins": {
+    "SystemBars": { "insetsHandling": "css", "style": "DEFAULT", "initialViewportFitValueHint": "cover" }
+  }
+}
