@@ -6,6 +6,7 @@ David's calendar and floating task lists. One app, synced between the Fold and t
 - `supabase/schema.sql` – the database: one table, private to each signed-in user, with live updates
 - `android/` – the Android app (Capacitor)
 - `.github/workflows/android.yml` – builds `Daybook.apk` on every push and attaches it to the **Daybook for Android** release
+- `.github/workflows/web.yml` – publishes the web version to https://harveyd31-crypto.github.io/daybook/ (Settings → Pages → Source: GitHub Actions)
 
 ## One-time setup
 
