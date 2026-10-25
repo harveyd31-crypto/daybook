@@ -301,7 +301,7 @@ function weekRowHTML(days,key){
   let bg='',heads='';
   days.forEach((d,i)=>{if(!d)return;const dt=parse(d),evs=eventsOn(d);
     bg+=`<button class="dbg" data-day="${d}" style="grid-column:${i+1}" aria-label="${longDate(d)}${evs.length?', '+evs.length+' events':''}"></button>`;
-    heads+=`<div class="dh${d<td?' past':''}" style="grid-column:${i+1}"><span class="dn${d===td?' today':''}${isWE(dt)?' we':''}${d<td?' past':''}">${dt.getDate()}</span></div>`});
+    heads+=`<div class="dh${d<td?' past':''}" style="grid-column:${i+1}"><span class="dn${d===td?' today':''}${isWE(dt)?' we':''}${d<td?' past':''}${d===ui.sel&&duoOn()?' sel':''}" data-dn="${d}">${dt.getDate()}</span></div>`});
   return `<div class="wrow" data-w="${key}" style="grid-template-rows:46px repeat(${lanes},auto) minmax(8px,1fr)">${bg}${heads}${chips}</div>`;
 }
 function monthSection(m){
@@ -604,7 +604,7 @@ view.addEventListener('click',e=>{
   const ev=e.target.closest('[data-ev]');if(ev)return openDetail(ev.dataset.ev,ev.dataset.d);
   const nw=e.target.closest('[data-new]');if(nw)return openNew({date:nw.dataset.new});
   const ag=e.target.closest('[data-agchk]');if(ag){const[lid,tid]=ag.dataset.agchk.split('|');return editList(lid,l=>{const t=findTask(l,tid);t.done=!t.done})}
-  if(ui.view==='month'){const d=e.target.closest('[data-day]');if(d)return go('day',{date:d.dataset.day,dir:1,ox:e.clientX,oy:e.clientY})}
+  if(ui.view==='month'){const d=e.target.closest('[data-day]');if(d){if(duoOn()&&d.dataset.day!==ui.sel){haptic();return pickDay(d.dataset.day)}return go('day',{date:d.dataset.day,dir:1,ox:e.clientX,oy:e.clientY})}}
   if(ui.view==='year'){const m=e.target.closest('[data-m]');if(m){const t=today(),d=m.dataset.m.slice(0,7)===t.slice(0,7)?t:m.dataset.m;return go('month',{date:d,dir:1,ox:e.clientX,oy:e.clientY,toSection:true,fromYear:true})}}
 });
 $('#strip').addEventListener('click',e=>{const b=e.target.closest('[data-hd]');if(!b)return;
@@ -633,43 +633,72 @@ let rzT=0;addEventListener('resize',()=>{clearTimeout(rzT);rzT=setTimeout(()=>{i
 const side=$('#side');let duoReady=false;
 function applyDuo(){const want=ui.duoPref&&innerWidth>=720&&innerHeight>=460,root=document.documentElement,was=root.classList.contains('duo');
   if(want===was)return false;root.classList.toggle('duo',want);side.hidden=!want;
+  if(want&&duoReady&&(ui.view==='day'||ui.view==='list'))ui.view='month';
   return true}
+const duoOn=()=>document.documentElement.classList.contains('duo');
+function markSel(d){pane.querySelectorAll('.dn.sel').forEach(x=>x.classList.remove('sel'));pane.querySelector(`.dn[data-dn="${d}"]`)?.classList.add('sel')}
+const nowMin=()=>{const n=new Date();return n.getHours()*60+n.getMinutes()};
+const durTxt=m=>m<60?`${m} min`:`${Math.floor(m/60)} h${m%60?` ${m%60} min`:''}`;
 function renderSide(){
-  if(!document.documentElement.classList.contains('duo'))return;
-  if(ui.sideFollow!==ui.sel){ui.sideFollow=ui.sel;ui.sideM=firstOf(ui.sel)}
-  const m=ui.sideM,start=addDays(m,-offOf(m)),td=today(),wk=weekDays(ui.sel),L=['S','M','T','W','T','F','S'];
-  let g='';
-  for(let i=0;i<42;i++){const dt=addDays(start,i),d=ymd(dt),out=dt.getMonth()!==m.getMonth(),evs=eventsOn(d),tk=tasksDue(d).some(x=>!x.t.done),iw=wk.includes(d),c=i%7;
-    g+=`<button class="sd-d${out?' out':''}${d<td?' past':''}${d===td?' today':''}${d===ui.sel?' sel':''}${iw?' inweek':''}${iw&&c===0?' wf':''}${iw&&c===6?' wl':''}" data-sd="${d}" data-dropday="${d}" aria-label="${longDate(d)}"><b>${dt.getDate()}</b><span class="sd-dots">${evs.slice(0,3).map(e=>`<i style="--c:${cc(e)}"></i>`).join('')}${tk&&evs.length<3?'<i class="task"></i>':''}</span></button>`}
-  let ag='',shown=0;
-  for(let i=0;i<21&&shown<10;i++){const d=shift(ui.sel,i),evs=eventsOn(d),ts=tasksDue(d);
-    if(!evs.length&&!ts.length&&i>0)continue;shown++;
-    const rel=d===td?'Today':d===shift(td,1)?'Tomorrow':d===shift(td,-1)?'Yesterday':DOW[parse(d).getDay()];
-    ag+=`<section class="sd-day${d<td?' past':''}"><button class="sd-dh${d===ui.sel?' cur':''}" data-sd="${d}" data-dropday="${d}"><b>${rel}</b><span>${shortDate(d)}</span></button>
-      ${evs.map(e=>`<button class="sd-ev" data-ev="${e.id}" data-d="${d}" style="--c:${cc(e)}"><i></i><span><small>${isTop(e)?'All-day':`${e.start} – ${e.end}`}</small>${esc(e.title)}${e.loc?`<em>${esc(e.loc)}</em>`:''}</span></button>`).join('')}
-      ${ts.map(({lid,l,t})=>`<div class="sd-tk" style="--lc:${col(l.color)}"><button class="chk${t.done?' on':''}" data-agchk="${lid}|${t.id}" aria-label="Toggle task"></button><span class="${t.done?'done':''}">${esc(t.text)}</span><em>${esc(l.name)}</em></div>`).join('')}
-      ${!evs.length&&!ts.length?'<p class="sd-none">Nothing scheduled</p>':''}</section>`}
-  side.innerHTML=`<div class="sd-head"><button class="sd-title" data-sdtoday aria-label="Go to today"><b>${MONTHS[m.getMonth()]}</b> <span>${m.getFullYear()}</span></button><span class="sp"></span>
-    <button class="cbtn sm" data-sdnav="-1" aria-label="Previous month">${I.back}</button><button class="cbtn sm flip" data-sdnav="1" aria-label="Next month">${I.back}</button></div>
-    <div class="sd-wd">${[0,1,2,3,4,5,6].map(i=>`<span>${L[(i+ui.ws)%7]}</span>`).join('')}</div><div class="sd-grid">${g}</div><div class="sd-agenda">${ag}</div>`;
+  if(!duoOn())return;
+  const d=ui.sel,td=today(),dt=parse(d),evs=eventsOn(d),k=dayDiff(td,d);
+  const rel=k===0?'Today':k===1?'Tomorrow':k===-1?'Yesterday':k>0?`In ${k} days`:`${-k} days ago`;
+  const all=[];for(const[lid,l]of Object.entries(S.lists))for(const t of l.tasks||[])all.push({lid,l,t});
+  const dueDay=all.filter(x=>x.t.due===d),over=d===td?all.filter(x=>x.t.due&&x.t.due<td&&!x.t.done):[];
+  const openDue=dueDay.filter(x=>!x.t.done).length;
+  let next='';
+  if(d===td){const n=nowMin(),tm=evs.filter(e=>!isTop(e)).map(e=>({...e,...span(e)}));
+    const cur=tm.find(e=>e.s<=n&&e.e>n),nx=tm.filter(e=>e.s>n).sort((a,b)=>a.s-b.s)[0],e=cur||nx;
+    if(e)next=`<button class="sm-next" data-ev="${e.id}" data-d="${d}" style="--c:${cc(e)}"><small>${cur?`Now · ends in ${durTxt(e.e-n)}`:`Up next · in ${durTxt(e.s-n)}`}</small><b>${esc(e.title)}</b><span>${e.start} – ${e.end}${e.loc?' · '+esc(e.loc):''}</span>${cur?`<i class="prog" style="width:${Math.round((n-e.s)/(e.e-e.s)*100)}%"></i>`:''}</button>`;
+    else if(evs.length)next=`<div class="sm-free">Nothing else on today.</div>`}
+  const n=nowMin(),sched=evs.length?evs.map(e=>{const past=d<td||(d===td&&!isTop(e)&&span(e).e<=n);
+      return `<button class="sm-ev${past?' past':''}" data-ev="${e.id}" data-d="${d}" style="--c:${cc(e)}"><i></i><span class="tm">${isTop(e)?'All day':`${e.start}<br>${e.end}`}</span><span class="tx"><b>${esc(e.title)}</b>${e.loc?`<span>${esc(e.loc)}</span>`:''}</span></button>`}).join('')
+    :`<div class="sm-empty">No events. <button data-new="${d}">Add one</button></div>`;
+  const trow=({lid,l,t},showDue)=>`<div class="sm-task${t.done?' done':''}" data-lid="${lid}" data-t="${t.id}" style="--lc:${col(l.color)}"><button class="chk${t.done?' on':''}" data-agchk="${lid}|${t.id}" aria-label="${t.done?'Mark not done':'Mark done'}"></button><button class="sm-tt" data-open="${lid}|${t.id}">${esc(t.text)}</button>${showDue&&t.due?`<span class="due${t.due<td&&!t.done?' late':''}">${dueLabel(t.due)}</span>`:''}<span class="grip" data-grip aria-label="Drag to a day" role="img">${I.grip}</span></div>`;
+  const dayTasks=[...over.map(x=>trow(x,true)),...dueDay.map(x=>trow(x,false))].join('');
+  const lists=Object.entries(S.lists).filter(([,l])=>l.state!=='closed').sort((a,b)=>(a[1].created||0)-(b[1].created||0)).map(([lid,l])=>{
+    const open=(l.tasks||[]).filter(t=>!t.done),done=(l.tasks||[]).length-open.length;
+    return `<div class="sm-list" style="--lc:${col(l.color)}"><div class="sm-lh"><i></i>${esc(l.name)}<em>${open.length}${done?` · ${done} done`:''}</em></div>
+      ${open.map(t=>trow({lid,l,t},true)).join('')}
+      <form class="sm-add" data-addl="${lid}"><input placeholder="Add to ${esc(l.name)}" autocomplete="off" enterkeyhint="done" aria-label="New task in ${esc(l.name)}"></form></div>`}).join('');
+  let up='',cnt=0;
+  for(let i=1;i<=10&&cnt<6;i++){const dd=shift(d,i);for(const e of eventsOn(dd)){if(cnt>=6)break;cnt++;
+    up+=`<button class="sm-up" data-ev="${e.id}" data-d="${dd}" style="--c:${cc(e)}"><b>${i===1?'Tomorrow':D3[parse(dd).getDay()]+' '+parse(dd).getDate()}</b><span><i></i>${esc(e.title)}</span><em>${isTop(e)?'All day':e.start}</em></button>`}}
+  const st=side.scrollTop;
+  side.innerHTML=`<div class="sm-head"><div><h1>${DOW[dt.getDay()]}</h1><p>${dt.getDate()} ${MONTHS[dt.getMonth()]} ${dt.getFullYear()} · <span>${rel}</span></p></div>
+      <div class="sm-nav"><button class="cbtn sm" data-sdstep="-1" aria-label="Previous day">${I.back}</button>${d!==td?`<button class="tbtn" data-sdtoday>Today</button>`:''}<button class="cbtn sm flip" data-sdstep="1" aria-label="Next day">${I.back}</button></div></div>
+    <div class="sm-stats"><span><b>${evs.length}</b>event${evs.length===1?'':'s'}</span><span><b>${openDue}</b>task${openDue===1?'':'s'} due</span>${over.length?`<span class="warn"><b>${over.length}</b>overdue</span>`:''}</div>
+    ${next}
+    <section><h4>Schedule</h4>${sched}</section>
+    ${dayTasks?`<section><h4>${d===td&&over.length?'Due and overdue':'Tasks due'}</h4>${dayTasks}</section>`:''}
+    ${lists?`<section><h4>Lists</h4><div class="sm-lists">${lists}</div><p class="sm-tip">Hold a task and drop it on a day in the month.</p></section>`:''}
+    ${up?`<section><h4>Coming up</h4>${up}</section>`:''}`;
+  side.scrollTop=st;
 }
 function pickDay(d){
+  if(ui.view==='month'){setSel(d);markSel(d);renderSide();
+    const c=pane.querySelector(`.dbg[data-day="${d}"]`);if(!c){initRange(d);render({noAnchor:true,force:true});positionMonth(d)}
+    else{const r=c.getBoundingClientRect();if(r.top<topH()||r.bottom>innerHeight-90)positionMonth(d)}return}
   if(ui.view==='day')selectDay(d);
   else if(ui.view==='week'){const same=weekDays(ui.sel).includes(d);setSel(d);render({force:true});if(!same)positionTimeline(null)}
-  else if(ui.view==='month'){setSel(d);positionMonth(d);renderSide()}
-  else go('day',{date:d,dir:1});
+  else go('month',{date:d});
 }
 side.addEventListener('click',e=>{
+  if(performance.now()<noFloatClick)return;
   const ev=e.target.closest('[data-ev]');if(ev)return openDetail(ev.dataset.ev,ev.dataset.d);
   const ag=e.target.closest('[data-agchk]');if(ag){const[lid,tid]=ag.dataset.agchk.split('|');haptic();return editList(lid,l=>{const t=findTask(l,tid);if(t)t.done=!t.done})}
-  const n=e.target.closest('[data-sdnav]');if(n){ui.sideM=addMonths(ui.sideM,+n.dataset.sdnav);renderSide();return}
+  const op=e.target.closest('[data-open]');if(op){const[lid,tid]=op.dataset.open.split('|');return sheetOpen(taskPage(lid,tid))}
+  const nw=e.target.closest('[data-new]');if(nw)return openNew({date:nw.dataset.new});
+  const st=e.target.closest('[data-sdstep]');if(st)return pickDay(shift(ui.sel,+st.dataset.sdstep));
   if(e.target.closest('[data-sdtoday]'))return pickDay(today());
-  const d=e.target.closest('[data-sd]');if(d)pickDay(d.dataset.sd);
 });
-let sdS=null;
-side.addEventListener('touchstart',e=>{if(!e.target.closest('.sd-grid')||e.touches.length>1)return;sdS={x:e.touches[0].clientX,y:e.touches[0].clientY}},{passive:true});
-side.addEventListener('touchend',e=>{if(!sdS)return;const t=e.changedTouches[0],dx=t.clientX-sdS.x,dy=t.clientY-sdS.y;sdS=null;
-  if(Math.abs(dx)>50&&Math.abs(dx)>Math.abs(dy)*1.4){ui.sideM=addMonths(ui.sideM,dx<0?1:-1);renderSide();haptic()}});
+side.addEventListener('submit',e=>{e.preventDefault();const f=e.target.closest('[data-addl]');if(!f)return;const inp=f.querySelector('input'),txt=inp.value.trim();if(!txt)return;
+  inp.value='';haptic();editList(f.dataset.addl,l=>l.tasks.push({id:uid('t'),text:txt,done:false,created:Date.now()}));setTimeout(()=>side.querySelector(`[data-addl="${f.dataset.addl}"] input`)?.focus(),60)});
+/* drag a task from the summary across the fold onto the month */
+side.addEventListener('touchstart',e=>{if(td||e.touches.length>1)return;const row=e.target.closest('.sm-task');if(!row)return;
+  const grip=e.target.closest('[data-grip]');if(!grip&&e.target.closest('.chk'))return;const t=e.touches[0];tdBegin(row,t.clientX,t.clientY,false,!!grip);if(td)tdAttach(td,e.target)},{passive:true});
+side.addEventListener('pointerdown',e=>{if(e.pointerType!=='mouse'||e.button!==0||td)return;const row=e.target.closest('.sm-task');if(!row||(!e.target.closest('[data-grip]')&&e.target.closest('.chk')))return;tdBegin(row,e.clientX,e.clientY,true,false)});
+setInterval(()=>{if(duoOn()&&ui.sel===today()&&!busy()&&!side.contains(document.activeElement))renderSide()},30000);
 side.addEventListener('contextmenu',e=>e.preventDefault());
 
 /* view menu */
@@ -1061,8 +1090,8 @@ floats.addEventListener('pointercancel',()=>{if(pdrag){pdrag.p.style.opacity='';
 dock.addEventListener('click',e=>{const b=e.target.closest('[data-undock]');if(!b)return;undockList(b.dataset.undock,b)});
 
 floats.addEventListener('focusout',e=>{if(e.target.matches('input.tt')&&editingTask){editingTask=null;setTimeout(renderPanels,0)}});
-function tdBegin(row,x,y,mouse,instant){const p=row.closest('.panel');if(!p)return;
-  td={row,lid:p.dataset.l,tid:row.dataset.t,x0:x,y0:y,x,y,active:false,mouse};if(instant)tdStart();else if(!mouse)td.timer=setTimeout(tdStart,300)}
+function tdBegin(row,x,y,mouse,instant){const lid=row.dataset.lid||row.closest('.panel')?.dataset.l;if(!lid)return;
+  td={row,lid,tid:row.dataset.t,x0:x,y0:y,x,y,active:false,mouse};if(instant)tdStart();else if(!mouse)td.timer=setTimeout(tdStart,300)}
 function tdStart(){if(!td||td.active)return;const l=S.lists[td.lid],t=l&&findTask(l,td.tid);if(!t){td=null;return}td.active=true;haptic();
   document.querySelectorAll('.tghost').forEach(x=>x.remove());
   const g=document.createElement('div');g.className='tghost glass';g.style.setProperty('--lc',col(l.color));g.innerHTML=`<span>${esc(t.text)}</span><small>Drop on a day</small>`;
