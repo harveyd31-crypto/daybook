@@ -963,9 +963,10 @@ function renderPanels(){
   const act=document.activeElement,aid=act&&floats.contains(act)?act.id:null,sel=aid&&act.selectionStart!=null?[act.selectionStart,act.selectionEnd]:null;
   const open=Array.from(floats.querySelectorAll('.task.dating')).map(li=>li.dataset.t);
   const entries=Object.entries(S.lists).sort((a,b)=>(a[1].created||0)-(b[1].created||0));
-  let html='',tabs='',i=0;const w=panelW();
+  let html='',tabs='',i=0,bi=0;const w=panelW();
   for(const[id,l]of entries){const c=col(l.color);
-    if(l.state==='dock'){tabs+=`<button class="tab glass" data-undock="${id}" style="--lc:${c}" aria-label="Show ${esc(l.name)}">${esc(l.name)} <em>${(l.tasks||[]).filter(t=>!t.done).length}</em></button>`;continue}
+    if(l.state==='dock'){const n=(l.tasks||[]).filter(t=>!t.done).length;
+      tabs+=`<button class="bubble" data-undock="${id}" style="--lc:${c};--d:${(bi++)*-1.3}s" aria-label="Open ${esc(l.name)}, ${n} open"><span class="bl">${esc(initials(l.name))}</span>${n?`<span class="cnt">${n}</span>`:''}<span class="bname">${esc(l.name)}</span></button>`;continue}
     if(l.state!=='float')continue;
     const p=l.x==null?defaultPos(i):{x:l.x,y:l.y};i++;
     const x=Math.min(Math.max(8,p.x),innerWidth-w-8),y=Math.min(Math.max(70,p.y),innerHeight-150);
@@ -978,14 +979,56 @@ function renderPanels(){
         ${done.length?`<button class="showdone" data-act="showdone">${l.showDone?'Hide':'Show'} completed (${done.length})</button>${l.showDone?`<ul class="tasks">${done.map(taskRow).join('')}</ul>`:''}`:''}
       </div></section>`}
   floats.innerHTML=html;dock.innerHTML=tabs;
+  const pids=new Set([...floats.querySelectorAll('.panel')].map(p=>p.dataset.l)),bids=new Set([...dock.querySelectorAll('.bubble')].map(b=>b.dataset.undock));
+  if(morphQ){const q=morphQ;morphQ=null;requestAnimationFrame(()=>runMorph(q))}
+  else if(shownP){pids.forEach(id=>{if(!shownP.has(id))popIn(floats.querySelector(`.panel[data-l="${id}"]`))});bids.forEach(id=>{if(!shownB.has(id))jelly(dock.querySelector(`[data-undock="${id}"]`),true)})}
+  shownP=pids;shownB=bids;
   open.forEach(t=>floats.querySelector(`[data-t="${t}"]`)?.classList.add('dating'));
   if(aid){const el=document.getElementById(aid);if(el){el.focus({preventScroll:true});if(sel)try{el.setSelectionRange(sel[0],sel[1])}catch(e){}}}
 }
 function editList(id,fn){if(!S.lists[id])return;const l=clone(S.lists[id]);l.tasks=l.tasks||[];fn(l);put(id,l)}
 const findTask=(l,tid)=>l.tasks.find(t=>t.id===tid);
+
+/* ---- liquid glass: windows morph into bubbles at the edge and back ---- */
+let morphQ=null,shownP=null,shownB=null;
+const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const initials=n=>{const w=String(n||'?').trim().split(/\s+/).filter(Boolean);return ((w[0]||'?')[0]+(w[1]?w[1][0]:'')).toUpperCase()};
+const rectOf=el=>{const r=el.getBoundingClientRect();return{x:r.left,y:r.top,w:r.width,h:r.height}};
+function dockList(id,fromEl){if(!S.lists[id])return;const el=fromEl||floats.querySelector(`.panel[data-l="${id}"]`);
+  morphQ={id,to:'dock',from:el?rectOf(el):null,c:col(S.lists[id].color)};haptic();editList(id,l=>l.state='dock')}
+function undockList(id,fromEl){if(!S.lists[id])return;const el=fromEl||dock.querySelector(`[data-undock="${id}"]`);zMap[id]=++zTop;
+  morphQ={id,to:'float',from:el?rectOf(el):null,c:col(S.lists[id].color)};haptic();editList(id,l=>l.state='float')}
+const springK=t=>1-Math.exp(-6.4*t)*Math.cos(9.2*t);
+function runMorph(q){
+  const target=q.to==='dock'?dock.querySelector(`[data-undock="${q.id}"]`):floats.querySelector(`.panel[data-l="${q.id}"]`);
+  if(!target)return;
+  if(!q.from||reducedMotion){q.to==='dock'?jelly(target,true):popIn(target);return}
+  const f=q.from,t=rectOf(target),m=document.createElement('div');m.className='morph';m.style.setProperty('--lc',q.c);
+  if(q.to==='dock')m.innerHTML=`<span>${esc(initials(S.lists[q.id]?.name))}</span>`;
+  document.body.appendChild(m);target.style.visibility='hidden';
+  const rf=q.to==='dock'?30:f.w/2,rt=q.to==='dock'?t.w/2:30,N=28,fr=[];
+  for(let i=0;i<=N;i++){const u=i/N,k=springK(u),kr=1-Math.pow(1-Math.min(1,u*1.5),3);
+    /* squash and stretch: the shape lags behind its motion like a drop of liquid */
+    const sx=1+(k-u)*.18,sy=1-(k-u)*.18;
+    const w=Math.max(10,(f.w+(t.w-f.w)*k)*sx),h=Math.max(10,(f.h+(t.h-f.h)*k)*sy);
+    const cx=f.x+f.w/2+((t.x+t.w/2)-(f.x+f.w/2))*k,cy=f.y+f.h/2+((t.y+t.h/2)-(f.y+f.h/2))*k;
+    fr.push({left:(cx-w/2)+'px',top:(cy-h/2)+'px',width:w+'px',height:h+'px',borderRadius:Math.min(rf+(rt-rf)*kr,w/2,h/2)+'px',offset:u})}
+  const span=m.firstElementChild;if(span)span.animate([{opacity:0,transform:'scale(.6)'},{opacity:0,offset:.45},{opacity:1,transform:'scale(1)'}],{duration:560,fill:'forwards'});
+  const a=m.animate(fr,{duration:q.to==='dock'?580:640,easing:'linear',fill:'forwards'});
+  const done=()=>{m.remove();target.style.visibility='';if(q.to==='dock'){jelly(target,false);target.classList.add('peek');setTimeout(()=>target.classList.remove('peek'),1700)}else revealPanel(target)};
+  a.finished.then(done,done);
+}
+function jelly(el,fromNothing){if(!el||reducedMotion)return;
+  el.animate(fromNothing?[{transform:'scale(.2)',opacity:0},{transform:'scale(1.2,1.12)',opacity:1,offset:.4},{transform:'scale(.9,.95)',offset:.62},{transform:'scale(1.04,1.01)',offset:.82},{transform:'scale(1)'}]
+    :[{transform:'scale(1.16,.86)'},{transform:'scale(.9,1.08)',offset:.35},{transform:'scale(1.04,.97)',offset:.65},{transform:'scale(1)'}],{duration:fromNothing?620:520,easing:'ease-out'})}
+function popIn(el){if(!el||reducedMotion)return;
+  el.animate([{transform:'scale(.6)',opacity:0,filter:'blur(6px)'},{transform:'scale(1.035)',opacity:1,filter:'blur(0)',offset:.6},{transform:'scale(.995)',offset:.82},{transform:'scale(1)'}],{duration:480,easing:'cubic-bezier(.2,.9,.25,1)'})}
+function revealPanel(el){if(!el||reducedMotion)return;
+  el.animate([{transform:'scale(1.02,.98)'},{transform:'scale(.995,1.005)',offset:.5},{transform:'scale(1)'}],{duration:360,easing:'ease-out'});
+  [...el.querySelectorAll('.ph,.pb')].forEach((c,i)=>c.animate([{opacity:0,transform:'translateY(6px)'},{opacity:1,transform:'none'}],{duration:260,delay:i*60,fill:'backwards',easing:'ease-out'}))}
 floats.addEventListener('click',e=>{if(performance.now()<noFloatClick)return;const p=e.target.closest('.panel');if(!p)return;const id=p.dataset.l;const b=e.target.closest('[data-act]');if(!b)return;
   const act=b.dataset.act,tid=b.closest('[data-t]')?.dataset.t;
-  if(act==='collapse')editList(id,l=>l.collapsed=!l.collapsed);else if(act==='dock')editList(id,l=>l.state='dock');
+  if(act==='collapse')editList(id,l=>l.collapsed=!l.collapsed);else if(act==='dock')dockList(id,p);
   else if(act==='showdone')editList(id,l=>l.showDone=!l.showDone);
   else if(act==='check'){haptic();editList(id,l=>{const t=findTask(l,tid);t.done=!t.done;t.doneAt=t.done?Date.now():null})}
   else if(act==='rm')editList(id,l=>l.tasks=l.tasks.filter(t=>t.id!==tid));
@@ -1006,10 +1049,10 @@ floats.addEventListener('pointermove',e=>{if(!pdrag)return;const dx=e.clientX-pd
   pdrag.p.style.opacity=(pdrag.ox+dx+w*.5>innerWidth)?'.5':''});
 floats.addEventListener('pointerup',e=>{if(!pdrag)return;const d=pdrag;pdrag=null;if(!d.moved)return;
   const dx=e.clientX-d.sx,dy=e.clientY-d.sy,dt=performance.now()-d.t,w=d.p.offsetWidth;
-  if((dx>70&&Math.abs(dy)<60&&dt<450)||d.ox+dx+w*.5>innerWidth){haptic();editList(d.id,l=>{l.x=d.ox;l.y=d.oy;l.state='dock'})}
+  if((dx>70&&Math.abs(dy)<60&&dt<450)||d.ox+dx+w*.5>innerWidth){d.p.style.opacity='';morphQ={id:d.id,to:'dock',from:rectOf(d.p),c:col(S.lists[d.id].color)};haptic();editList(d.id,l=>{l.x=d.ox;l.y=d.oy;l.state='dock'})}
   else editList(d.id,l=>{l.x=d.p.offsetLeft;l.y=d.p.offsetTop})});
 floats.addEventListener('pointercancel',()=>{if(pdrag){pdrag.p.style.opacity='';pdrag=null;renderPanels()}});
-dock.addEventListener('click',e=>{const b=e.target.closest('[data-undock]');if(!b)return;zMap[b.dataset.undock]=++zTop;editList(b.dataset.undock,l=>l.state='float')});
+dock.addEventListener('click',e=>{const b=e.target.closest('[data-undock]');if(!b)return;undockList(b.dataset.undock,b)});
 
 floats.addEventListener('focusout',e=>{if(e.target.matches('input.tt')&&editingTask){editingTask=null;setTimeout(renderPanels,0)}});
 function tdBegin(row,x,y,mouse,instant){const p=row.closest('.panel');if(!p)return;
