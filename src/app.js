@@ -272,7 +272,7 @@ function renderHeader(){
   const back=$('#b-back'),ttl=$('#ttl'),strip=$('#strip'),dl=$('#dateline');
   back.hidden=v==='year';
   $('#backlbl').textContent=v==='month'?String(ui.visM.getFullYear()):MONTHS[sel.getMonth()];
-  ttl.hidden=v==='week'||v==='day';
+  ttl.hidden=v==='week'||v==='day'||v==='year';
   $('#title').textContent=v==='year'?ui.year:v==='month'?MONTHS[ui.visM.getMonth()]:v==='list'?'Upcoming':'';
   dl.hidden=v!=='day';
   if(v==='day'){const d=parse(ui.sel);dl.textContent=`${DOW[d.getDay()]} – ${d.getDate()} ${M3[d.getMonth()]} ${d.getFullYear()}`}
@@ -291,13 +291,13 @@ function updateTitleOnly(){if(ui.view!=='month')return;$('#title').textContent=M
 function initRange(d){ui.rStart=addMonths(firstOf(d),-6);ui.rCount=18}
 function weekRowHTML(days,key){
   const td=today(),items=rowItems(days,null,true);let chips='';
-  for(const it of items){if(it.k>7)continue;if(it.tk){chips+=taskChip(it,`grid-column:${it.s+1};grid-row:${it.k+2}`);continue}const ev=it.ev,timed=!isTop(ev);
+  let lanes=0;for(const it of items){lanes=Math.max(lanes,it.k+1);if(it.tk){chips+=taskChip(it,`grid-column:${it.s+1};grid-row:${it.k+2}`);continue}const ev=it.ev,timed=!isTop(ev);
     chips+=`<button class="ev${isTop(ev)?' ad':''}${it.span?' span':''}${days[it.e]<td?' past':''}" data-ev="${ev.id}" data-d="${it.d}" style="grid-column:${it.s+1}/${it.e+2};grid-row:${it.k+2};--c:${cc(ev)}"><span class="et">${esc(ev.title)}</span>${timed?`<span class="t">${ev.start}</span>`:''}</button>`}
   let bg='',heads='';
   days.forEach((d,i)=>{if(!d)return;const dt=parse(d),evs=eventsOn(d);
     bg+=`<button class="dbg" data-day="${d}" style="grid-column:${i+1}" aria-label="${longDate(d)}${evs.length?', '+evs.length+' events':''}"></button>`;
-    heads+=`<div class="dh${d<td?' past':''}" style="grid-column:${i+1}"><span class="dn${d===td?' today':''}${isWE(dt)?' we':''}${d<td?' past':''}">${dt.getDate()}</span><span class="dots">${evs.slice(0,3).map(e=>`<i style="--c:${cc(e)}"></i>`).join('')}${evs.length<3&&tasksDue(d).some(x=>!x.t.done)?'<i class="task"></i>':''}</span></div>`});
-  return `<div class="wrow" data-w="${key}">${bg}${heads}${chips}</div>`;
+    heads+=`<div class="dh${d<td?' past':''}" style="grid-column:${i+1}"><span class="dn${d===td?' today':''}${isWE(dt)?' we':''}${d<td?' past':''}">${dt.getDate()}</span></div>`});
+  return `<div class="wrow" data-w="${key}" style="grid-template-rows:46px repeat(${lanes},auto) minmax(8px,1fr)">${bg}${heads}${chips}</div>`;
 }
 function monthSection(m){
   const off=offOf(m),dim=new Date(m.getFullYear(),m.getMonth()+1,0).getDate(),rows=Math.ceil((off+dim)/7),now=new Date();
@@ -306,13 +306,8 @@ function monthSection(m){
   for(let r=0;r<rows;r++){const days=[];for(let c=0;c<7;c++){const n=r*7+c-off+1;days.push(n>=1&&n<=dim?ymd(new Date(m.getFullYear(),m.getMonth(),n)):null)}h+=weekRowHTML(days,mk+'_'+r)}
   return h+'</section>';
 }
-function monthHTML(){if(!ui.rStart)initRange(ui.sel);let h='';for(let i=0;i<ui.rCount;i++)h+=monthSection(addMonths(ui.rStart,i));return `<div class="mgrid bleed">${h}</div>`}
-function setRowH(h){
-  ui.rowH=h;const g=pane.querySelector('.mgrid');if(!g)return;
-  const z=clamp((h-ROWMIN)/(rowMax()-ROWMIN),0,1);
-  g.style.setProperty('--rowH',h+'px');g.style.setProperty('--co',clamp((z-.04)*5,0,1).toFixed(3));g.style.setProperty('--do',clamp(1-z*6,0,1).toFixed(3));
-  g.classList.toggle('deep',h>=146);
-}
+function monthHTML(){if(!ui.rStart)initRange(ui.sel);let h='';for(let i=0;i<ui.rCount;i++)h+=monthSection(addMonths(ui.rStart,i));return `<div class="mgrid bleed deep">${h}</div>`}
+function setRowH(){}
 function captureAnchor(){const th=topH();for(const r of pane.querySelectorAll('.wrow')){const b=r.getBoundingClientRect();if(b.bottom>th+4)return{key:r.dataset.w,top:b.top}}return null}
 function restoreAnchor(a){const r=pane.querySelector(`.wrow[data-w="${a.key}"]`);if(r)quietScroll(r.getBoundingClientRect().top-a.top)}
 let quiet=false;
@@ -324,7 +319,7 @@ function positionMonth(d,oy,toSection){
   quiet=true;window.scrollTo(0,Math.max(0,scrollY+el.getBoundingClientRect().top-target));requestAnimationFrame(()=>{quiet=false;updateVisMonth()});
 }
 function updateVisMonth(){
-  if(ui.view!=='month')return;const th=topH()+50;let cur=null;
+  if(ui.view!=='month'||(pane.getAnimations&&pane.getAnimations().length))return;const th=topH()+50;let cur=null;
   for(const s of pane.querySelectorAll('.msec')){if(s.getBoundingClientRect().top<=th)cur=s;else break}
   const m=cur?parse(cur.dataset.m):ui.rStart;if(m&&m.getTime()!==ui.visM.getTime()){ui.visM=m;updateTitleOnly()}
 }
@@ -369,13 +364,31 @@ function positionTimeline(minute,oy){
 }
 
 /* ---- year & list ---- */
-function yearHTML(){
-  const y=ui.year,t=today(),now=new Date();let h='';
+function yearBlock(y){
+  const t=today(),now=new Date();let h='';
   for(let m=0;m<12;m++){const f=new Date(y,m,1),off=offOf(f),dim=new Date(y,m+1,0).getDate();let g='';
     for(let i=0;i<off;i++)g+='<i></i>';for(let n=1;n<=dim;n++){const d=ymd(new Date(y,m,n));g+=`<i class="${d===t?'today':d<t?'past':''}">${n}</i>`}
     h+=`<button class="ym" data-m="${ymd(f)}" aria-label="${MONTHS[m]} ${y}"><h3 class="${y===now.getFullYear()&&m===now.getMonth()?'cur':''}">${M3[m]}</h3><div class="ymg">${g}</div></button>`}
-  return `<div class="year">${h}</div>`;
+  return `<section class="ysec" data-y="${y}"><h2 class="${y===now.getFullYear()?'cur':''}">${y}</h2><div class="year">${h}</div></section>`;
 }
+function yearHTML(){if(ui.yStart==null){ui.yStart=ui.year-2;ui.yCount=5}let h='';for(let i=0;i<ui.yCount;i++)h+=yearBlock(ui.yStart+i);return `<div class="years">${h}</div>`}
+function positionYear(monthKey,center){
+  const el=pane.querySelector(`.ym[data-m="${monthKey}"]`),sec=el?.closest('.ysec');if(!el)return null;
+  const target=center?(innerHeight+topH())/2-el.getBoundingClientRect().height/2:topH()+8;
+  const top=center?el.getBoundingClientRect().top:sec.getBoundingClientRect().top;
+  window.scrollTo(0,Math.max(0,scrollY+top-target));
+  const r=el.getBoundingClientRect();return{x:r.left+r.width/2,y:r.top+r.height/2};
+}
+function extendYears(){
+  if(ui.view!=='year')return;const H=document.documentElement.scrollHeight;
+  const anchor=[...pane.querySelectorAll('.ysec')].find(s=>s.getBoundingClientRect().bottom>topH());const key=anchor?.dataset.y,top=anchor?.getBoundingClientRect().top;
+  let changed=false;
+  if(scrollY+innerHeight>H-innerHeight){ui.yCount+=2;changed=true}
+  else if(scrollY<innerHeight*.8){ui.yStart-=2;ui.yCount+=2;changed=true}
+  if(!changed)return;pane.innerHTML=yearHTML();
+  const again=key&&pane.querySelector(`.ysec[data-y="${key}"]`);if(again)quietScroll(again.getBoundingClientRect().top-top);
+}
+addEventListener('scroll',()=>{if(ui.view==='year'&&!quiet)requestAnimationFrame(extendYears)},{passive:true});
 function itemHTML(ev,d){
   const tl=isTop(ev)?'All-day':`${ev.start}<br>${ev.end}`,sub=[ev.loc,ev.notes].filter(Boolean).join(' · ');
   return `<button class="item" data-ev="${ev.id}" data-d="${d}" style="--c:${cc(ev)}"><span class="bar"></span><span><b>${esc(ev.title)}</b>${sub?`<small>${esc(sub)}</small>`:''}</span><span class="tm">${tl}</span></button>`;
@@ -389,19 +402,21 @@ function listHTML(){
 }
 
 /* ================= navigation ================= */
-function zoomAnim(dir,ox,oy){
+function zoomAnim(dir,ox,oy,k){
   const r=pane.getBoundingClientRect();pane.style.transformOrigin=ox!=null?`${ox-r.left}px ${oy-r.top}px`:`50% ${Math.max(0,topH()-r.top+120)}px`;
-  try{pane.animate([{transform:`scale(${dir>0?.84:1.18})`,opacity:.05},{transform:'none',opacity:1}],{duration:400,easing:'cubic-bezier(.2,.9,.25,1)'})}catch(e){}
+  if(k==null)k=dir>0?.86:1.16;
+  try{pane.animate([{transform:`scale(${k})`,opacity:0},{transform:'none',opacity:1}],{duration:440,easing:'cubic-bezier(.2,.85,.2,1)'}).finished.then(()=>updateVisMonth(),()=>{})}catch(e){}
 }
 function go(v,o={}){
   if(o.date)setSel(o.date);
   ui.view=v;saveUi();closeMenu();
   pane.style.transform='';pane.style.opacity='';
   if(v==='month'){if(o.rowH!=null)ui.rowH=o.rowH;initRange(o.date||ui.sel);ui.visM=firstOf(o.date||ui.sel)}
-  if(v==='year')ui.year=parse(o.date||ui.sel).getFullYear();
+  if(v==='year'){ui.year=parse(o.date||ui.sel).getFullYear();ui.yStart=ui.year-2;ui.yCount=5}
   render({noAnchor:true,force:true});
-  if(v==='month')positionMonth(o.date||ui.sel,o.oy,o.toSection);
+  if(v==='month'){positionMonth(o.date||ui.sel,o.oy,o.toSection);if(o.dir)return zoomAnim(o.dir,o.ox,o.oy,o.fromYear?.3:null)}
   else if(v==='week'||v==='day')positionTimeline(o.minute,o.my);
+  else if(v==='year'){const c=positionYear(ymd(firstOf(o.date||ui.sel)),o.dir<0);if(o.dir&&c)return zoomAnim(-1,c.x,c.y,2.6)}
   else window.scrollTo(0,0);
   if(o.dir)zoomAnim(o.dir,o.ox,o.oy);
 }
@@ -474,9 +489,7 @@ view.addEventListener('touchstart',e=>{
   const n=e.touches.length;
   if(n===2){if(G.mode==='drag')return;clearTimeout(G.timer);if(G.mode==='swipe')swipeReset();
     const[a,b]=e.touches,dx=Math.abs(a.clientX-b.clientX),dy=Math.abs(a.clientY-b.clientY);
-    lockScroll(true);
-    G={mode:'pinch',d0:Math.max(Math.hypot(dx,dy),20),dy0:Math.max(dy,40),raf:0,q:null};
-    pinchBegin((a.clientX+b.clientX)/2,(a.clientY+b.clientY)/2,dx>dy*1.15?'h':'v');return}
+    G={mode:'done'};return}
   if(n!==1||G.mode)return;
   const t=e.touches[0];
   G={mode:'pending',x0:t.clientX,y0:t.clientY,x:t.clientX,y:t.clientY,t0:performance.now(),target:e.target};
@@ -490,7 +503,7 @@ view.addEventListener('touchmove',e=>{
   const t=e.touches[0];if(!t)return;G.x=t.clientX;G.y=t.clientY;
   if(G.mode==='drag'){e.preventDefault();dragMove();return}
   if(G.mode==='pending'){const dx=G.x-G.x0,dy=G.y-G.y0;if(Math.hypot(dx,dy)>9){clearTimeout(G.timer);
-    G.mode=(['day','week','year'].includes(ui.view)&&Math.abs(dx)>Math.abs(dy)*1.2)?'swipe':'scroll';if(G.mode==='swipe')pane.style.transition='none'}}
+    G.mode=(['day','week'].includes(ui.view)&&Math.abs(dx)>Math.abs(dy)*1.2)?'swipe':'scroll';if(G.mode==='swipe')pane.style.transition='none'}}
   if(G.mode==='swipe'){e.preventDefault();pane.style.transform=`translateX(${G.x-G.x0}px)`}
 },{passive:false});
 function touchFinish(e,cancel){
@@ -520,12 +533,6 @@ addEventListener('pointermove',e=>{if(!G.mouse)return;G.x=e.clientX;G.y=e.client
 addEventListener('pointerup',e=>{if(!G.mouse)return;clearTimeout(G.timer);const lp=G.lp;if(G.mode==='drag')dragEnd();if(lp)suppressClick();G={mode:null};flushDirty()});
 view.addEventListener('dblclick',e=>{if(ui.view!=='week'&&ui.view!=='day')return;if(e.target.closest('.blk,.ev'))return;const tl=$('#tl');if(!tl||e.clientY<tl.getBoundingClientRect().top)return;
   const day=colDayAt(e.clientX),s=clamp(Math.floor(minuteAt(e.clientY)/30)*30,0,1380);openNew({date:day,start:fromMin(s),end:fromMin(s+60),draft:makeDraft(day,s,s+60)})});
-let W=null,wT=0;
-addEventListener('wheel',e=>{if(!e.ctrlKey||!$('#sheet').hidden)return;e.preventDefault();
-  if(!W){W={s:1};pinchBegin(e.clientX,e.clientY,'v')}
-  W.s*=Math.exp(-e.deltaY/110);pinchMove(W.s,W.s,e.clientX,e.clientY);
-  clearTimeout(wT);wT=setTimeout(()=>{W=null;pinchEnd()},170)},{passive:false});
-
 /* long press */
 function longPress(){
   if(G.mode!=='pending')return;
@@ -593,7 +600,7 @@ view.addEventListener('click',e=>{
   const nw=e.target.closest('[data-new]');if(nw)return openNew({date:nw.dataset.new});
   const ag=e.target.closest('[data-agchk]');if(ag){const[lid,tid]=ag.dataset.agchk.split('|');return editList(lid,l=>{const t=findTask(l,tid);t.done=!t.done})}
   if(ui.view==='month'){const d=e.target.closest('[data-day]');if(d)return go('day',{date:d.dataset.day,dir:1,ox:e.clientX,oy:e.clientY})}
-  if(ui.view==='year'){const m=e.target.closest('[data-m]');if(m)return go('month',{date:m.dataset.m,dir:1,ox:e.clientX,oy:e.clientY,toSection:true})}
+  if(ui.view==='year'){const m=e.target.closest('[data-m]');if(m){const t=today(),d=m.dataset.m.slice(0,7)===t.slice(0,7)?t:m.dataset.m;return go('month',{date:d,dir:1,ox:e.clientX,oy:e.clientY,toSection:true,fromYear:true})}}
 });
 $('#strip').addEventListener('click',e=>{const b=e.target.closest('[data-hd]');if(!b)return;
   if(ui.view==='week')go('day',{date:b.dataset.hd,dir:1,ox:e.clientX,oy:e.clientY,minute:minuteAt(topH()+10),my:topH()+10});else selectDay(b.dataset.hd)});
@@ -601,7 +608,7 @@ $('#b-back').onclick=e=>{if(ui.view==='month')go('year',{date:ymd(ui.visM),dir:-
 $('#b-today').onclick=()=>{const t=today();
   if(ui.view==='month'){const cell=pane.querySelector(`.dbg[data-day="${t}"]`);if(!cell){initRange(t);render({noAnchor:true})}
     const row=pane.querySelector(`.dbg[data-day="${t}"]`)?.closest('.wrow');if(row)window.scrollTo({top:scrollY+row.getBoundingClientRect().top-topH()-(innerHeight-topH())*.28,behavior:'smooth'})}
-  else if(ui.view==='year'){if(ui.year!==new Date().getFullYear()){ui.year=new Date().getFullYear();render()}window.scrollTo({top:0,behavior:'smooth'})}
+  else if(ui.view==='year'){const k=ymd(firstOf(t));if(!pane.querySelector(`.ym[data-m="${k}"]`))go('year',{date:t});const el=pane.querySelector(`.ym[data-m="${k}"]`);if(el)window.scrollTo({top:scrollY+el.closest('.ysec').getBoundingClientRect().top-topH()-8,behavior:'smooth'})}
   else if(ui.view==='list')window.scrollTo({top:0,behavior:'smooth'});
   else if(weekDays(ui.sel).includes(t)){if(ui.view==='day')selectDay(t);else{setSel(t);render()}positionTimeline(null)}
   else{const dir=t>ui.sel?1:-1;const w=pane.offsetWidth+40;pane.style.transition='transform .17s ease-in';pane.style.transform=`translateX(${-dir*w}px)`;
@@ -613,7 +620,7 @@ $('#b-lists').onclick=()=>sheetOpen(listsPage(),{detent:'large'});
 $('#b-cals').onclick=()=>sheetOpen(calsPage(),{detent:'large'});
 $('#b-search').onclick=()=>sheetOpen(searchPage(),{detent:'large'});
 addEventListener('keydown',e=>{if(!$('#sheet').hidden||e.target.matches('input,textarea,select'))return;
-  if(e.key==='ArrowLeft'&&['day','week','year'].includes(ui.view))slide(-1);else if(e.key==='ArrowRight'&&['day','week','year'].includes(ui.view))slide(1);
+  if(e.key==='ArrowLeft'&&['day','week'].includes(ui.view))slide(-1);else if(e.key==='ArrowRight'&&['day','week'].includes(ui.view))slide(1);
   else if(e.key==='t')$('#b-today').click()});
 let rzT=0;addEventListener('resize',()=>{clearTimeout(rzT);rzT=setTimeout(()=>{if(applyDuo())go(ui.view,{date:ui.sel});else render()},120)});
 
@@ -621,7 +628,6 @@ let rzT=0;addEventListener('resize',()=>{clearTimeout(rzT);rzT=setTimeout(()=>{i
 const side=$('#side');let duoReady=false;
 function applyDuo(){const want=ui.duoPref&&innerWidth>=720&&innerHeight>=460,root=document.documentElement,was=root.classList.contains('duo');
   if(want===was)return false;root.classList.toggle('duo',want);side.hidden=!want;
-  if(want&&duoReady&&(ui.view==='month'||ui.view==='year'||ui.view==='list'))ui.view='day';
   return true}
 function renderSide(){
   if(!document.documentElement.classList.contains('duo'))return;
@@ -667,7 +673,7 @@ function closeMenu(){menu.hidden=true}
 $('#b-mode').onclick=e=>{e.stopPropagation();if(!menu.hidden)return closeMenu();
   const v=ui.view,opts=[['year','Year'],['month','Month'],['week','Week'],['day','Day'],['list','List']];
   menu.innerHTML=opts.map(([k,n])=>`<button role="menuitemradio" data-mode="${k}" aria-checked="${v===k}"><span class="ck">${v===k?'✓':''}</span>${n}</button>`).join('')
-    +(v==='month'?`<hr><small>Month detail</small>${[['c','Compact',ROWMIN],['s','Stacked',112],['d','Details',rowMax()]].map(([k,n,h])=>`<button data-den="${h}"><span class="ck">${Math.abs(ui.rowH-h)<12?'✓':''}</span>${n}</button>`).join('')}`:'');
+;
   const r=$('#b-mode').getBoundingClientRect();menu.hidden=false;menu.style.top=(r.bottom+8)+'px';menu.style.right=Math.max(12,innerWidth-r.right-4)+'px'};
 menu.addEventListener('click',e=>{
   const b=e.target.closest('[data-mode]');if(b){const order=['year','month','week','day'],a=order.indexOf(ui.view),z=order.indexOf(b.dataset.mode);
@@ -852,9 +858,8 @@ function calsPage(){
         <div class="sec"><h4>Preferences</h4><div class="group">
           <button class="row nav" data-defcal><span>Default Calendar</span><span class="val"><span class="vt">${esc(calOf(st.defaultCal).name)}</span></span></button>
           <div class="row"><span>Week Starts On</span><div class="mseg"><button data-ws="0" aria-pressed="${ui.ws===0}">Sunday</button><button data-ws="1" aria-pressed="${ui.ws===1}">Monday</button></div></div>
-          <div class="row"><span>Reverse Pinch</span><input type="checkbox" class="sw" id="prv" ${ui.pinchRev?'checked':''}></div>
           <div class="row"><span>Two-Pane Layout on Wide Screens</span><input type="checkbox" class="sw" id="duo" ${ui.duoPref?'checked':''}></div></div>
-          <p class="note" style="margin-top:8px">Spread two fingers on the month to see more of each event, keep spreading to open the week, then the day. Pinch to go back out to the year.</p></div>
+</div>
         ${syncStatusHTML()}
         <div class="group"><button class="row" data-export>Export Backup</button><label class="row" style="cursor:pointer">Import Backup<input type="file" accept=".json,application/json" id="imp" hidden></label></div>
         <p class="note">Your calendar and tasks live on your Daybook server and sync between your devices. A backup file is an extra copy you keep yourself.</p>`},
@@ -865,7 +870,6 @@ function calsPage(){
       el.querySelector('[data-add]').onclick=()=>{const id=uid('cal');upd(s=>s.cals.push({id,name:'New Calendar',color:COLORS[s.cals.length%COLORS.length],on:true}));pushPage(calEditPage(id))};
       el.querySelector('[data-defcal]').onclick=()=>pushPage(choicePage('Default Calendar',settings().cals.map(c=>({k:c.id,label:c.name,color:col(c.color)})),settings().defaultCal,k=>{const s=clone(settings());s.defaultCal=k;put('settings',s)}));
       el.querySelectorAll('[data-ws]').forEach(b=>b.onclick=()=>{ui.ws=+b.dataset.ws;saveUi();el.querySelectorAll('[data-ws]').forEach(x=>x.setAttribute('aria-pressed',x===b));if(ui.view==='month'){initRange(ymd(ui.visM));render({noAnchor:true});positionMonth(ymd(ui.visM),null,true)}else render()});
-      el.querySelector('#prv').onchange=e=>{ui.pinchRev=e.target.checked;saveUi()};
       el.querySelector('#duo').onchange=e=>{ui.duoPref=e.target.checked;saveUi();if(applyDuo())go(ui.view,{date:ui.sel})};
       el.querySelector('[data-export]').onclick=exportData;
       el.querySelector('#imp').onchange=e=>importFile(e.target.files[0]);
