@@ -77,7 +77,7 @@ button{cursor:pointer;background:none;border:0;padding:0;-webkit-touch-callout:n
 .menu small{padding:6px 14px 2px;color:var(--muted);font-size:13px;font-weight:600}
 @media (prefers-reduced-motion:no-preference){.menu:not([hidden]){animation:pop .22s cubic-bezier(.2,.9,.25,1.2)}@keyframes pop{from{transform:scale(.85);opacity:0}}}
 
-main{max-width:1180px;margin-inline:auto;position:relative;z-index:1;touch-action:pan-y;-webkit-touch-callout:none}
+main{max-width:1180px;margin-inline:auto;position:relative;z-index:1;touch-action:pan-y;overflow-anchor:none;-webkit-touch-callout:none}
 #pane{will-change:transform}
 
 /* month: continuous, row height is pinched */
@@ -405,3 +405,5 @@ html.duo .bot{left:var(--side)}
 .sd-tk span{flex:1;min-width:0;overflow-wrap:anywhere}
 .sd-tk .done{text-decoration:line-through;color:var(--muted)}
 .sd-none{margin:0 6px 4px;color:var(--muted);font-size:14px}
+
+html{overflow-anchor:none}

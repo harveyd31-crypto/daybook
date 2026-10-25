@@ -433,7 +433,7 @@ function pinchBegin(cx,cy,axis){
 function captureRow(){const a=captureAnchor();return a?pane.querySelector(`.wrow[data-w="${a.key}"]`):null}
 function pinchMove(s,sy,cx,cy){
   if(!P)return;if(ui.pinchRev){s=1/s;sy=1/sy}
-  P.s=s;P.cx=cx;P.cy=cy;
+  P.s=s;P.sy=sy;P.cx=cx;P.cy=cy;
   if(P.view==='month'){const raw=P.h0*s;P.raw=raw;setRowH(rubber(raw,ROWMIN,rowMax()));
     if(P.row){const r=P.row.getBoundingClientRect();quietScroll(r.top-(cy-P.ratio*r.height))}}
   else if(P.min!=null){const raw=P.h0*sy;P.raw=raw;setHour(rubber(raw,HMIN,HMAX));const tl=$('#tl');if(tl)quietScroll(tl.getBoundingClientRect().top+P.min/60*ui.hourH-cy)}
@@ -451,7 +451,7 @@ function pinchEnd(){
     return;
   }
   if(p.min!=null){
-    if(p.raw<HMIN*.72){setHour(HMIN);saveUi();haptic();return ui.view==='day'?go('week',{dir:-1,ox:cx,oy:cy}):go('month',{date:ui.sel,rowH:rowMax(),dir:-1,ox:cx,oy:cy})}
+    if(p.raw<HMIN*.72||(p.raw<HMIN*1.3&&p.sy<.55)||p.sy<.36){setHour(Math.max(HMIN,Math.min(56,ui.hourH)));saveUi();haptic();return ui.view==='day'?go('week',{dir:-1,ox:cx,oy:cy}):go('month',{date:ui.sel,rowH:rowMax(),dir:-1,ox:cx,oy:cy})}
     if(p.raw>HMAX*1.3&&ui.view==='week'){setHour(HMAX*.6);saveUi();haptic();return go('day',{date:colDayAt(cx)||ui.sel,dir:1,ox:cx,oy:cy,minute:p.min,my:cy})}
     const to=clamp(ui.hourH,HMIN,HMAX),m=p.min;
     if(to!==ui.hourH)tween(ui.hourH,to,220,h=>{setHour(h);const tl=$('#tl');if(tl)quietScroll(tl.getBoundingClientRect().top+m/60*h-cy)},()=>{saveUi();flushDirty()});
@@ -474,7 +474,8 @@ view.addEventListener('touchstart',e=>{
   const n=e.touches.length;
   if(n===2){if(G.mode==='drag')return;clearTimeout(G.timer);if(G.mode==='swipe')swipeReset();
     const[a,b]=e.touches,dx=Math.abs(a.clientX-b.clientX),dy=Math.abs(a.clientY-b.clientY);
-    G={mode:'pinch',d0:Math.max(Math.hypot(dx,dy),20),dy0:Math.max(dy,40)};
+    lockScroll(true);
+    G={mode:'pinch',d0:Math.max(Math.hypot(dx,dy),20),dy0:Math.max(dy,40),raf:0,q:null};
     pinchBegin((a.clientX+b.clientX)/2,(a.clientY+b.clientY)/2,dx>dy*1.15?'h':'v');return}
   if(n!==1||G.mode)return;
   const t=e.touches[0];
@@ -482,8 +483,10 @@ view.addEventListener('touchstart',e=>{
   G.timer=setTimeout(longPress,430);
 },{passive:true});
 view.addEventListener('touchmove',e=>{
-  if(G.mode==='pinch'){if(e.touches.length<2)return;e.preventDefault();const[a,b]=e.touches;
-    pinchMove(Math.max(Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY),1)/G.d0,Math.max(Math.abs(a.clientY-b.clientY),40)/G.dy0,(a.clientX+b.clientX)/2,(a.clientY+b.clientY)/2);return}
+  if(G.mode==='pinch'||G.mode==='done'){if(e.cancelable)e.preventDefault();if(G.mode==='done'||e.touches.length<2)return;const[a,b]=e.touches;
+    /* coalesce to one update per frame */
+    G.q=[Math.max(Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY),1)/G.d0,Math.max(Math.abs(a.clientY-b.clientY),40)/G.dy0,(a.clientX+b.clientX)/2,(a.clientY+b.clientY)/2];
+    if(!G.raf){const g=G;g.raf=requestAnimationFrame(()=>{g.raf=0;if(g.q&&G===g&&g.mode==='pinch')pinchMove(...g.q)})}return}
   const t=e.touches[0];if(!t)return;G.x=t.clientX;G.y=t.clientY;
   if(G.mode==='drag'){e.preventDefault();dragMove();return}
   if(G.mode==='pending'){const dx=G.x-G.x0,dy=G.y-G.y0;if(Math.hypot(dx,dy)>9){clearTimeout(G.timer);
@@ -491,8 +494,8 @@ view.addEventListener('touchmove',e=>{
   if(G.mode==='swipe'){e.preventDefault();pane.style.transform=`translateX(${G.x-G.x0}px)`}
 },{passive:false});
 function touchFinish(e,cancel){
-  if(G.mode==='pinch'){if(e.touches.length<2){pinchEnd();G={mode:e.touches.length?'done':null}}return}
-  if(G.mode==='done'){if(!e.touches.length)G={mode:null};return}
+  if(G.mode==='pinch'){if(e.touches.length<2){if(G.raf){cancelAnimationFrame(G.raf);G.raf=0;if(G.q)pinchMove(...G.q)}pinchEnd();G={mode:e.touches.length?'done':null};if(!e.touches.length)lockScroll(false)}return}
+  if(G.mode==='done'){if(!e.touches.length){G={mode:null};lockScroll(false)}return}
   clearTimeout(G.timer);const lp=G.lp;
   if(G.mode==='drag'){cancel?dragCancel():dragEnd()}
   else if(G.mode==='swipe'){const dx=G.x-G.x0,v=dx/(performance.now()-G.t0);if(!cancel&&(Math.abs(dx)>pane.offsetWidth*.22||Math.abs(v)>.55))slide(dx<0?1:-1);else swipeReset()}
@@ -502,6 +505,9 @@ function touchFinish(e,cancel){
 }
 view.addEventListener('touchend',e=>touchFinish(e,false));
 view.addEventListener('touchcancel',e=>touchFinish(e,true));
+/* While two fingers are down the page must not scroll on its own: stop native panning and any fling in progress */
+let scrollLocked=false;
+function lockScroll(on){if(on===scrollLocked)return;scrollLocked=on;const y=scrollY,v=on?'hidden':'';document.documentElement.style.overflow=v;document.body.style.overflow=v;if(on)window.scrollTo(0,y)}
 function swipeReset(){pane.style.transition='transform .28s cubic-bezier(.2,.9,.25,1)';pane.style.transform='';setTimeout(()=>pane.style.transition='',300)}
 view.addEventListener('contextmenu',e=>e.preventDefault());
 
