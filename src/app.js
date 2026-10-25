@@ -167,7 +167,7 @@ function makeClient(cfg){return createClient(cfg.url,cfg.key,{auth:{persistSessi
 function showAuth(msg){
   const cfg=serverCfg(),el=document.getElementById('auth'),built=!!(cfg.url&&cfg.key);
   el.innerHTML=`<form class="authcard" id="authf" autocomplete="on">
-    <div class="authlogo" aria-hidden="true"><span></span><b>${new Date().getDate()}</b></div>
+    <div class="authlogo" aria-hidden="true"><svg viewBox="0 0 100 100" width="66" height="66"><circle cx="22.0" cy="30" r="6.4" fill="#F5F5F7" opacity="0.95"/><circle cx="40.7" cy="30" r="6.4" fill="#F5F5F7" opacity="0.95"/><circle cx="59.4" cy="30" r="6.4" fill="#F5F5F7" opacity="0.95"/><circle cx="78.1" cy="30" r="6.4" fill="#F5F5F7" opacity="0.95"/><circle cx="22.0" cy="50" r="6.4" fill="#F5F5F7" opacity="0.95"/><circle cx="40.7" cy="50" r="6.4" fill="#F5F5F7" opacity="0.95"/><circle cx="59.4" cy="50" r="7.2" fill="#FF453A"/><circle cx="78.1" cy="50" r="6.4" fill="#F5F5F7" opacity="0.32"/><circle cx="22.0" cy="70" r="6.4" fill="#F5F5F7" opacity="0.32"/><circle cx="40.7" cy="70" r="6.4" fill="#F5F5F7" opacity="0.32"/><circle cx="59.4" cy="70" r="6.4" fill="#F5F5F7" opacity="0.32"/><circle cx="78.1" cy="70" r="6.4" fill="#F5F5F7" opacity="0.32"/></svg></div>
     <h1>Daybook</h1><p class="note" style="text-align:center;margin:0 0 6px">Sign in to sync your calendar and tasks between your devices.</p>
     <div class="group">
       <div class="row"><input id="a-email" type="email" placeholder="Email" autocomplete="username" required value="${esc(lsGet('daybook-email')||'')}"></div>
