@@ -966,7 +966,7 @@ function renderPanels(){
   let html='',tabs='',i=0,bi=0;const w=panelW();
   for(const[id,l]of entries){const c=col(l.color);
     if(l.state==='dock'){const n=(l.tasks||[]).filter(t=>!t.done).length;
-      tabs+=`<button class="bubble" data-undock="${id}" style="--lc:${c};--d:${(bi++)*-1.3}s" aria-label="Open ${esc(l.name)}, ${n} open"><span class="bl">${esc(initials(l.name))}</span>${n?`<span class="cnt">${n}</span>`:''}<span class="bname">${esc(l.name)}</span></button>`;continue}
+      tabs+=`${bi++?'<i class="capsep" aria-hidden="true"></i>':''}<button class="bubble" data-undock="${id}" style="--lc:${c}" aria-label="Open ${esc(l.name)}, ${n} open"><span class="bl">${esc(initials(l.name))}</span>${n?'<span class="dot"></span>':''}<span class="bname">${esc(l.name)}</span></button>`;continue}
     if(l.state!=='float')continue;
     const p=l.x==null?defaultPos(i):{x:l.x,y:l.y};i++;
     const x=Math.min(Math.max(8,p.x),innerWidth-w-8),y=Math.min(Math.max(70,p.y),innerHeight-150);
@@ -978,7 +978,8 @@ function renderPanels(){
         <form class="padd" data-add="${id}"><input id="add-${id}" placeholder="New task" autocomplete="off" enterkeyhint="done"><button aria-label="Add task">${I.plus}</button></form>
         ${done.length?`<button class="showdone" data-act="showdone">${l.showDone?'Hide':'Show'} completed (${done.length})</button>${l.showDone?`<ul class="tasks">${done.map(taskRow).join('')}</ul>`:''}`:''}
       </div></section>`}
-  floats.innerHTML=html;dock.innerHTML=tabs;
+  const hadCap=!!dock.querySelector('.edgecap');floats.innerHTML=html;dock.innerHTML=tabs?`<div class="edgecap">${tabs}</div>`:'';
+  if(tabs&&!hadCap&&!reducedMotion&&shownB)dock.firstElementChild.animate([{transform:'translateX(110%)'},{transform:'translateX(-6%)',offset:.7},{transform:'none'}],{duration:480,easing:'cubic-bezier(.2,.9,.25,1)'});
   const pids=new Set([...floats.querySelectorAll('.panel')].map(p=>p.dataset.l)),bids=new Set([...dock.querySelectorAll('.bubble')].map(b=>b.dataset.undock));
   if(morphQ){const q=morphQ;morphQ=null;requestAnimationFrame(()=>runMorph(q))}
   else if(shownP){pids.forEach(id=>{if(!shownP.has(id))popIn(floats.querySelector(`.panel[data-l="${id}"]`))});bids.forEach(id=>{if(!shownB.has(id))jelly(dock.querySelector(`[data-undock="${id}"]`),true)})}
@@ -992,7 +993,7 @@ const findTask=(l,tid)=>l.tasks.find(t=>t.id===tid);
 /* ---- liquid glass: windows morph into bubbles at the edge and back ---- */
 let morphQ=null,shownP=null,shownB=null;
 const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
-const initials=n=>{const w=String(n||'?').trim().split(/\s+/).filter(Boolean);return ((w[0]||'?')[0]+(w[1]?w[1][0]:'')).toUpperCase()};
+const initials=n=>(String(n||'?').trim()[0]||'?').toUpperCase();
 const rectOf=el=>{const r=el.getBoundingClientRect();return{x:r.left,y:r.top,w:r.width,h:r.height}};
 function dockList(id,fromEl){if(!S.lists[id])return;const el=fromEl||floats.querySelector(`.panel[data-l="${id}"]`);
   morphQ={id,to:'dock',from:el?rectOf(el):null,c:col(S.lists[id].color)};haptic();editList(id,l=>l.state='dock')}
@@ -1006,7 +1007,7 @@ function runMorph(q){
   const f=q.from,t=rectOf(target),m=document.createElement('div');m.className='morph';m.style.setProperty('--lc',q.c);
   if(q.to==='dock')m.innerHTML=`<span>${esc(initials(S.lists[q.id]?.name))}</span>`;
   document.body.appendChild(m);target.style.visibility='hidden';
-  const rf=q.to==='dock'?30:f.w/2,rt=q.to==='dock'?t.w/2:30,N=28,fr=[];
+  const rf=q.to==='dock'?30:18,rt=q.to==='dock'?18:30,N=28,fr=[];
   for(let i=0;i<=N;i++){const u=i/N,k=springK(u),kr=1-Math.pow(1-Math.min(1,u*1.5),3);
     /* squash and stretch: the shape lags behind its motion like a drop of liquid */
     const sx=1+(k-u)*.18,sy=1-(k-u)*.18;
