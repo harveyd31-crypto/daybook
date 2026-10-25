@@ -64,9 +64,11 @@ const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
 let cacheT=0;const cacheLocal=()=>{clearTimeout(cacheT);cacheT=setTimeout(()=>lsSet(LS,S),120)};
 let sb=null,session=null,channel=null,mode='offline',lastSync=lsGet(LSSYNC),pending=lsGet(LSP)||{};
 function typeOf(id){return S.events[id]?'event':S.lists[id]?'list':id==='settings'?'settings':null}
+const listSig=l=>l?l.name+'|'+l.color+'|'+JSON.stringify((l.tasks||[]).filter(t=>t.due).map(t=>[t.id,t.due,t.done,t.text])):'';
 function put(id,obj){
+  const calSame=obj.type==='list'&&listSig(S.lists[id])===listSig(obj);
   if(obj.type==='event')S.events[id]=obj;else if(obj.type==='list')S.lists[id]=obj;else S.settings=obj;
-  cacheLocal();scheduleRender();
+  cacheLocal();if(calSame)schedulePanels();else scheduleRender();
   pending[id]={type:obj.type||'settings',data:clone(obj),deleted:false};lsSet(LSP,pending);flushSoon();
 }
 function drop(id){const type=typeOf(id);delete S.events[id];delete S.lists[id];cacheLocal();scheduleRender();
@@ -130,7 +132,9 @@ async function startSync(){
   flushSoon(0);
   if(channel)sb.removeChannel(channel);
   channel=sb.channel('items-'+uidv).on('postgres_changes',{event:'*',schema:'public',table:'items',filter:`user_id=eq.${uidv}`},p=>{
-    const r=p.new;if(!r||!r.id)return;applyRow(r);noteSync(r.updated_at);cacheLocal();scheduleRender();
+    const r=p.new;if(!r||!r.id)return;const cur=r.type==='event'?S.events[r.id]:r.type==='list'?S.lists[r.id]:S.settings;
+    if(!r.deleted&&cur&&JSON.stringify(cur)===JSON.stringify(r.data)){noteSync(r.updated_at);return}
+    const was=r.type==='list'?listSig(S.lists[r.id]):null;applyRow(r);noteSync(r.updated_at);cacheLocal();if(r.type==='list'&&!r.deleted&&was===listSig(S.lists[r.id]))schedulePanels();else scheduleRender();
   }).subscribe(st=>{if(st==='SUBSCRIBED'){pull();if(!Object.keys(pending).length)setMode('synced')}else if(st==='CHANNEL_ERROR'||st==='TIMED_OUT')setMode(navigator.onLine?'error':'offline')});
 }
 addEventListener('online',()=>{if(session){pull();flushSoon(0)}});
@@ -254,6 +258,7 @@ function lanesFor(evs){
 const view=$('#view'),pane=$('#pane');
 let rq=0,dirty=false;
 function scheduleRender(){if(rq)return;rq=requestAnimationFrame(()=>{rq=0;render()})}
+let rqp=0;function schedulePanels(){if(rq||rqp)return;rqp=requestAnimationFrame(()=>{rqp=0;if(busy()){dirty=true;return}renderHeader();renderPanels()})}
 function busy(){return G.mode==='drag'||G.mode==='pinch'||!!P||!!(td&&td.active)}
 function render(o={}){
   onCache=null;taskIdx=null;
@@ -963,13 +968,13 @@ function renderPanels(){
   const act=document.activeElement,aid=act&&floats.contains(act)?act.id:null,sel=aid&&act.selectionStart!=null?[act.selectionStart,act.selectionEnd]:null;
   const open=Array.from(floats.querySelectorAll('.task.dating')).map(li=>li.dataset.t);
   const entries=Object.entries(S.lists).sort((a,b)=>(a[1].created||0)-(b[1].created||0));
-  let html='',tabs='',i=0,bi=0;const w=panelW();
+  let html='',tabs='',i=0,bi=0;const w=panelW(),capW=entries.some(([,l])=>l.state==='dock')?(dock.firstElementChild?.offsetWidth||52)+8:0;
   for(const[id,l]of entries){const c=col(l.color);
     if(l.state==='dock'){const n=(l.tasks||[]).filter(t=>!t.done).length;
       tabs+=`${bi++?'<i class="capsep" aria-hidden="true"></i>':''}<button class="bubble" data-undock="${id}" style="--lc:${c}" aria-label="Open ${esc(l.name)}, ${n} open"><span class="bl">${esc(initials(l.name))}</span>${n?'<span class="dot"></span>':''}<span class="bname">${esc(l.name)}</span></button>`;continue}
     if(l.state!=='float')continue;
     const p=l.x==null?defaultPos(i):{x:l.x,y:l.y};i++;
-    const x=Math.min(Math.max(8,p.x),innerWidth-w-8),y=Math.min(Math.max(70,p.y),innerHeight-150);
+    const x=Math.max(8,Math.min(p.x,innerWidth-w-8-capW)),y=Math.min(Math.max(topH()+6,p.y),innerHeight-150);
     const todo=(l.tasks||[]).filter(t=>!t.done),done=(l.tasks||[]).filter(t=>t.done);
     html+=`<section class="panel glass${l.collapsed?' collapsed':''}" data-l="${id}" style="--lc:${c};left:${x}px;top:${y}px;z-index:${zMap[id]||1}">
       <header class="ph" data-drag><span class="grab"></span><h3>${esc(l.name)}</h3><span class="pcount">${todo.length}</span>
@@ -1004,26 +1009,26 @@ function runMorph(q){
   const target=q.to==='dock'?dock.querySelector(`[data-undock="${q.id}"]`):floats.querySelector(`.panel[data-l="${q.id}"]`);
   if(!target)return;
   if(!q.from||reducedMotion){q.to==='dock'?jelly(target,true):popIn(target);return}
-  const f=q.from,t=rectOf(target),m=document.createElement('div');m.className='morph';m.style.setProperty('--lc',q.c);
-  if(q.to==='dock')m.innerHTML=`<span>${esc(initials(S.lists[q.id]?.name))}</span>`;
+  const f=q.from,t=rectOf(target),sx=f.w/t.w,sy=f.h/t.h,dx=f.x-t.x,dy=f.y-t.y;
+  const from=`translate(${dx}px,${dy}px) scale(${sx},${sy})`;
+  if(q.to==='float'){
+    /* the real window grows out of the capsule: transform and opacity only, so it stays smooth */
+    target.style.transformOrigin='0 0';
+    target.animate([{transform:from,borderRadius:`${16/sx}px / ${16/sy}px`},{transform:'none',borderRadius:'30px'}],{duration:340,easing:'cubic-bezier(.3,1.25,.45,1)'});
+    [...target.querySelectorAll('.ph,.pb')].forEach((c,i)=>c.animate([{opacity:0},{opacity:0,offset:.35},{opacity:1}],{duration:300+i*40,easing:'ease-out'}));
+    return;
+  }
+  const m=document.createElement('div');m.className='morph';m.style.cssText=`--lc:${q.c};left:${t.x}px;top:${t.y}px;width:${t.w}px;height:${t.h}px;transform-origin:0 0`;
   document.body.appendChild(m);target.style.visibility='hidden';
-  const rf=q.to==='dock'?30:18,rt=q.to==='dock'?18:30,N=28,fr=[];
-  for(let i=0;i<=N;i++){const u=i/N,k=springK(u),kr=1-Math.pow(1-Math.min(1,u*1.5),3);
-    /* squash and stretch: the shape lags behind its motion like a drop of liquid */
-    const sx=1+(k-u)*.18,sy=1-(k-u)*.18;
-    const w=Math.max(10,(f.w+(t.w-f.w)*k)*sx),h=Math.max(10,(f.h+(t.h-f.h)*k)*sy);
-    const cx=f.x+f.w/2+((t.x+t.w/2)-(f.x+f.w/2))*k,cy=f.y+f.h/2+((t.y+t.h/2)-(f.y+f.h/2))*k;
-    fr.push({left:(cx-w/2)+'px',top:(cy-h/2)+'px',width:w+'px',height:h+'px',borderRadius:Math.min(rf+(rt-rf)*kr,w/2,h/2)+'px',offset:u})}
-  const span=m.firstElementChild;if(span)span.animate([{opacity:0,transform:'scale(.6)'},{opacity:0,offset:.45},{opacity:1,transform:'scale(1)'}],{duration:560,fill:'forwards'});
-  const a=m.animate(fr,{duration:q.to==='dock'?580:640,easing:'linear',fill:'forwards'});
-  const done=()=>{m.remove();target.style.visibility='';if(q.to==='dock'){jelly(target,false);target.classList.add('peek');setTimeout(()=>target.classList.remove('peek'),1700)}else revealPanel(target)};
+  const a=m.animate([{transform:from,borderRadius:`${30/sx}px / ${30/sy}px`,opacity:1},{transform:'none',borderRadius:'16px',opacity:1}],{duration:300,easing:'cubic-bezier(.3,1.2,.45,1)',fill:'forwards'});
+  const done=()=>{m.remove();target.style.visibility='';jelly(target,false);target.classList.add('peek');setTimeout(()=>target.classList.remove('peek'),1400)};
   a.finished.then(done,done);
 }
 function jelly(el,fromNothing){if(!el||reducedMotion)return;
   el.animate(fromNothing?[{transform:'scale(.2)',opacity:0},{transform:'scale(1.2,1.12)',opacity:1,offset:.4},{transform:'scale(.9,.95)',offset:.62},{transform:'scale(1.04,1.01)',offset:.82},{transform:'scale(1)'}]
-    :[{transform:'scale(1.16,.86)'},{transform:'scale(.9,1.08)',offset:.35},{transform:'scale(1.04,.97)',offset:.65},{transform:'scale(1)'}],{duration:fromNothing?620:520,easing:'ease-out'})}
+    :[{transform:'scale(1.16,.86)'},{transform:'scale(.9,1.08)',offset:.35},{transform:'scale(1.04,.97)',offset:.65},{transform:'scale(1)'}],{duration:fromNothing?380:300,easing:'ease-out'})}
 function popIn(el){if(!el||reducedMotion)return;
-  el.animate([{transform:'scale(.6)',opacity:0,filter:'blur(6px)'},{transform:'scale(1.035)',opacity:1,filter:'blur(0)',offset:.6},{transform:'scale(.995)',offset:.82},{transform:'scale(1)'}],{duration:480,easing:'cubic-bezier(.2,.9,.25,1)'})}
+  el.animate([{transform:'scale(.8)',opacity:0},{transform:'scale(1.02)',opacity:1,offset:.65},{transform:'scale(1)'}],{duration:280,easing:'cubic-bezier(.2,.9,.25,1)'})}
 function revealPanel(el){if(!el||reducedMotion)return;
   el.animate([{transform:'scale(1.02,.98)'},{transform:'scale(.995,1.005)',offset:.5},{transform:'scale(1)'}],{duration:360,easing:'ease-out'});
   [...el.querySelectorAll('.ph,.pb')].forEach((c,i)=>c.animate([{opacity:0,transform:'translateY(6px)'},{opacity:1,transform:'none'}],{duration:260,delay:i*60,fill:'backwards',easing:'ease-out'}))}

@@ -454,7 +454,8 @@ html{overflow-anchor:none}
 .bubble .bname{position:absolute;right:70px;top:50%;translate:8px -50%;white-space:nowrap;padding:7px 13px;border-radius:999px;font-size:13px;font-weight:700;color:var(--lc);
   background:var(--lg-tint);-webkit-backdrop-filter:blur(18px) saturate(200%);backdrop-filter:blur(18px) saturate(200%);box-shadow:var(--lg-shadow),inset 0 0 0 .75px var(--lg-edge);
   opacity:0;pointer-events:none;transition:opacity .3s,translate .35s cubic-bezier(.2,.9,.25,1.2)}
-.bubble.peek .bname,.bubble:hover .bname,.bubble:focus-visible .bname{opacity:1;translate:0 -50%}
+.bubble.peek .bname,.bubble:focus-visible .bname{opacity:1;translate:0 -50%}
+@media (hover:hover){.bubble:hover .bname{opacity:1;translate:0 -50%}}
 @keyframes lgbob{0%,100%{translate:0 0}50%{translate:0 -4px}}
 .morph{position:fixed;left:0;top:0;z-index:32;pointer-events:none;display:grid;place-items:center;overflow:hidden;
   background:radial-gradient(60% 45% at 30% 20%,var(--lg-glint),transparent 70%),radial-gradient(95% 95% at 70% 85%,color-mix(in srgb,var(--lc) 50%,transparent),transparent 70%),var(--lg-tint);
@@ -485,3 +486,9 @@ html{overflow-anchor:none}
 .morph span{font-size:21px;font-weight:600}
 /* inbox shows a dot, not a number */
 #tcount{min-width:8px;width:8px;height:8px;padding:0;top:9px;right:10px;font-size:0;box-shadow:0 0 0 1.5px var(--glass)}
+
+/* performance: lighter glass on the moving parts */
+.panel.glass{-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%)}
+.morph{-webkit-backdrop-filter:none;backdrop-filter:none;will-change:transform;
+  background:linear-gradient(180deg,rgba(255,255,255,.07),rgba(255,255,255,0) 40%),color-mix(in srgb,var(--lc) 14%,var(--sheet))}
+.bubble .bname{transition:opacity .2s,translate .25s ease-out}
