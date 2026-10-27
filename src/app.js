@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, CapacitorHttp } from '@capacitor/core';
+import { parseICS, toDaybook, summarize } from './ics.js';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import { App } from '@capacitor/app';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
@@ -71,6 +72,10 @@ function put(id,obj){
   cacheLocal();if(calSame)schedulePanels();else scheduleRender();
   pending[id]={type:obj.type||'settings',data:clone(obj),deleted:false};lsSet(LSP,pending);flushSoon();
 }
+/* many changes at once (imports): one local save, one sync */
+function putMany(entries){for(const[id,obj]of entries){if(obj.type==='event')S.events[id]=obj;else if(obj.type==='list')S.lists[id]=obj;else S.settings=obj;
+  pending[id]={type:obj.type||'settings',data:clone(obj),deleted:false}}lsSet(LSP,pending);cacheLocal();scheduleRender();flushSoon()}
+function dropMany(ids){for(const id of ids){const type=typeOf(id);delete S.events[id];delete S.lists[id];if(type)pending[id]={type,data:{},deleted:true}}lsSet(LSP,pending);cacheLocal();scheduleRender();flushSoon()}
 function drop(id){const type=typeOf(id);delete S.events[id];delete S.lists[id];cacheLocal();scheduleRender();
   if(!type)return;pending[id]={type,data:{},deleted:true};lsSet(LSP,pending);flushSoon()}
 let flushT=0,flushing=false;
@@ -221,11 +226,11 @@ function occurs(ev,d){
   return d===ev.date;
 }
 const isTop=ev=>ev.allDay||isMulti(ev); /* shown in all-day band on timelines */
-let onCache=null;
+let onCache=null,evArr=null;
 function eventsOn(d){
   if(!onCache)onCache=new Map();if(onCache.has(d))return onCache.get(d);
-  const on=new Set(settings().cals.filter(c=>c.on).map(c=>c.id));
-  const r=Object.entries(S.events).filter(([id,e])=>on.has(e.cal)&&occurs(e,d)).map(([id,e])=>({id,...e}))
+  if(!evArr){const on=new Set(settings().cals.filter(c=>c.on).map(c=>c.id));evArr=Object.entries(S.events).filter(([id,e])=>on.has(e.cal))}
+  const r=evArr.filter(([id,e])=>occurs(e,d)).map(([id,e])=>({id,...e}))
     .sort((a,b)=>(isTop(b)-isTop(a))||(toMin(a.start)-toMin(b.start))||a.title.localeCompare(b.title));
   onCache.set(d,r);return r;
 }
@@ -261,7 +266,7 @@ function scheduleRender(){if(rq)return;rq=requestAnimationFrame(()=>{rq=0;render
 let rqp=0;function schedulePanels(){if(rq||rqp)return;rqp=requestAnimationFrame(()=>{rqp=0;if(busy()){dirty=true;return}renderHeader();renderPanels()})}
 function busy(){return G.mode==='drag'||G.mode==='pinch'||!!P||!!(td&&td.active)}
 function render(o={}){
-  onCache=null;taskIdx=null;
+  onCache=null;evArr=null;taskIdx=null;
   if(busy()&&!o.force){dirty=true;return}
   dirty=false;
   if(ui.view==='month'){const a=o.noAnchor?null:captureAnchor();pane.innerHTML=monthHTML();setRowH(ui.rowH);if(a)restoreAnchor(a)}
@@ -894,6 +899,11 @@ function calsPage(){
           <div class="row"><span>Week Starts On</span><div class="mseg"><button data-ws="0" aria-pressed="${ui.ws===0}">Sunday</button><button data-ws="1" aria-pressed="${ui.ws===1}">Monday</button></div></div>
           <div class="row"><span>Two-Pane Layout on Wide Screens</span><input type="checkbox" class="sw" id="duo" ${ui.duoPref?'checked':''}></div></div>
 </div>
+        <div class="sec"><h4>Import</h4><div class="group">
+          <label class="row" style="cursor:pointer"><span class="ri">${I.cal}</span><span style="flex:1">Import Calendar File (.ics)</span><input type="file" accept=".ics,text/calendar,text/x-vcalendar,application/ics,application/octet-stream" multiple id="icsin" hidden></label>
+          <button class="row nav" data-icslink><span class="ri">${I.link}</span><span style="flex:1">Add iCloud Calendar Link</span></button>
+          ${(settings().subs||[]).map(x=>`<button class="row nav" data-sub="${x.id}"><span class="ri">${I.rep}</span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(calOf(x.calId).name)}</span><span class="val">${x.last?'Updated '+agoTxt(x.last):'Not updated yet'}</span></button>`).join('')}
+        </div><p class="note" style="margin-top:8px">From iCloud on your Mac: open Calendar, select a calendar, then File → Export → Export… and choose the .ics file here. Or share a calendar from your iPhone as a public link to keep it updated automatically.</p></div>
         ${syncStatusHTML()}
         <div class="group"><button class="row" data-export>Export Backup</button><label class="row" style="cursor:pointer">Import Backup<input type="file" accept=".json,application/json" id="imp" hidden></label></div>
         <p class="note">Your calendar and tasks live on your Daybook server and sync between your devices. A backup file is an extra copy you keep yourself.</p>`},
@@ -907,6 +917,9 @@ function calsPage(){
       el.querySelector('#duo').onchange=e=>{ui.duoPref=e.target.checked;saveUi();if(applyDuo())go(ui.view,{date:ui.sel})};
       el.querySelector('[data-export]').onclick=exportData;
       el.querySelector('#imp').onchange=e=>importFile(e.target.files[0]);
+      el.querySelector('#icsin').onchange=e=>readIcsFiles([...e.target.files]);
+      el.querySelector('[data-icslink]').onclick=()=>pushPage(icsLinkPage());
+      el.querySelectorAll('[data-sub]').forEach(b=>b.onclick=()=>pushPage(subPage(b.dataset.sub)));
       el.querySelector('[data-signout]')?.addEventListener('click',signOut);
       el.querySelector('[data-signin]')?.addEventListener('click',()=>{sheetClose();showAuth()});
     },
@@ -922,9 +935,11 @@ function calEditPage(cid){
       el.querySelector('#cn').onchange=e=>{const v=e.target.value.trim();if(v)upd(c=>c.name=v)};
       el.querySelectorAll('[data-color]').forEach(b=>b.onclick=()=>{upd(c=>c.color=b.dataset.color);el.querySelectorAll('[data-color]').forEach(x=>x.setAttribute('aria-pressed',x===b))});
       el.querySelector('[data-delcal]')?.addEventListener('click',async()=>{const n=Object.values(S.events).filter(e=>e.cal===cid).length;
-        const a=await actionSheet([{label:'Delete Calendar',act:'d',red:true}],n?`Its ${n} events move to your default calendar.`:'This calendar has no events.');if(!a)return;
-        const s=clone(settings());s.cals=s.cals.filter(x=>x.id!==cid);if(s.defaultCal===cid)s.defaultCal=s.cals[0].id;put('settings',s);
-        for(const[id,e]of Object.entries(S.events))if(e.cal===cid){const x=clone(e);x.cal=s.defaultCal;put(id,x)}popPage()})}};
+        const a=await actionSheet(n?[{label:`Delete Calendar and Its ${n} Event${n===1?'':'s'}`,act:'all',red:true},{label:'Delete Calendar, Keep Events',act:'keep',red:true}]:[{label:'Delete Calendar',act:'all',red:true}],n?'Kept events move to your default calendar.':'This calendar has no events.');if(!a)return;
+        const s=clone(settings());s.cals=s.cals.filter(x=>x.id!==cid);if(s.defaultCal===cid)s.defaultCal=s.cals[0].id;s.subs=(s.subs||[]).filter(x=>x.calId!==cid);put('settings',s);
+        const mine=Object.entries(S.events).filter(([,e])=>e.cal===cid);
+        if(a==='all')dropMany(mine.map(([id])=>id));else putMany(mine.map(([id,e])=>[id,{...clone(e),cal:s.defaultCal}]));
+        toast(a==='all'&&n?`Deleted ${n} events`:'Calendar deleted');popPage()})}};
 }
 
 /* ---- search ---- */
@@ -981,6 +996,101 @@ function importFile(f){if(!f)return;const r=new FileReader();
   r.onload=()=>{try{const j=JSON.parse(r.result);if(j.app!=='daybook')throw 0;let n=0;
     for(const[id,e]of Object.entries(j.events||{})){put(id,e);n++}for(const[id,l]of Object.entries(j.lists||{})){put(id,l);n++}
     if(j.settings)put('settings',j.settings);sheetClose();toast(`Imported ${n} items`)}catch(e){toast('That file is not a Daybook backup.')}};r.readAsText(f)}
+
+/* ================= calendar import (.ics / iCloud) ================= */
+const agoTxt=t=>{const m=Math.round((Date.now()-t)/60000);return m<1?'just now':m<60?`${m} min ago`:m<1440?`${Math.round(m/60)} h ago`:`${Math.round(m/1440)} d ago`};
+const nfmt=n=>n.toLocaleString('en-US');
+function readIcsFiles(files){
+  if(!files.length)return;
+  Promise.all(files.map(f=>f.text().then(t=>({f,t})))).then(arr=>{
+    const items=[];
+    for(const{f,t}of arr){try{const p=parseICS(t,f.name);items.push({p,sum:summarize(p),target:'new'})}catch(e){toast(`${f.name} isn't a calendar file.`)}}
+    if(items.length)pushPage(icsPreviewPage(items));
+  }).catch(()=>toast('Could not read that file.'));
+}
+/* match an iCloud colour to the nearest Daybook colour */
+function nearestColor(hex,used){if(!hex)return COLORS.find(c=>!used.includes(c))||COLORS[0];
+  const rgb=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)),a=rgb(hex);let best=COLORS[0],bd=1e9;
+  for(const c of COLORS){const b=rgb(c),d=(a[0]-b[0])**2+(a[1]-b[1])**2+(a[2]-b[2])**2+(used.includes(c)?3000:0);if(d<bd){bd=d;best=c}}return best}
+function importParsed(p,target,fromDate,srcKey){
+  const s=clone(settings());let calId=target;
+  if(target==='new'){const ex=s.cals.find(c=>c.name.toLowerCase()===p.name.toLowerCase());
+    if(ex)calId=ex.id;else{calId=uid('cal');s.cals.push({id:calId,name:p.name,color:nearestColor(p.color,s.cals.map(c=>col(c.color))),on:true});put('settings',s)}}
+  const key=srcKey||('file:'+p.name);
+  const{events,tasks,stats}=toDaybook(p,{calId,srcKey:key,fromDate,today:today()});
+  // events that came from this same source before but are gone now get removed (keeps re-imports clean)
+  const stale=Object.entries(S.events).filter(([id,e])=>e.src===key&&e.cal===calId&&!events[id]).map(([id])=>id);
+  putMany(Object.entries(events));if(stale.length)dropMany(stale);
+  if(tasks.length){const ex=Object.entries(S.lists).find(([,l])=>l.name.toLowerCase()===p.name.toLowerCase());
+    if(ex)editList(ex[0],l=>{for(const t of tasks){const i=l.tasks.findIndex(x=>x.id===t.id);if(i>=0)l.tasks[i]={...l.tasks[i],...t};else l.tasks.push(t)}});
+    else put(uid('ls'),{type:'list',name:p.name,color:nearestColor(p.color,[]),x:null,y:null,state:'dock',collapsed:false,showDone:false,created:Date.now(),tasks})}
+  return{calId,n:Object.keys(events).length,tasks:tasks.length,removed:stale.length,stats};
+}
+function icsPreviewPage(items){
+  let range='year';
+  const pg={title:'Import',right:{aria:'Import',act:()=>run()},
+    html(){const cals=settings().cals;
+      return items.map((it,i)=>{const s=it.sum,c=it.p.color||COLORS[i%COLORS.length],tgt=it.target==='new'?(cals.find(x=>x.name.toLowerCase()===it.p.name.toLowerCase())?`Existing “${esc(it.p.name)}”`:`New calendar “${esc(it.p.name)}”`):esc(calOf(it.target).name);
+        return `<div class="group"><div class="row" style="align-items:flex-start;padding-block:14px"><span style="width:12px;height:12px;border-radius:50%;background:${c};flex:none;margin-top:5px"></span>
+          <span style="flex:1;min-width:0"><b style="display:block;font-size:17px">${esc(it.p.name)}</b><span style="color:var(--muted);font-size:14px">${nfmt(s.count)} event${s.count===1?'':'s'}${s.repeating?` · ${s.repeating} repeating`:''}${s.todos?` · ${s.todos} task${s.todos===1?'':'s'}`:''}${s.first?`<br>${shortDate(s.first)} ${s.first.slice(0,4)} – ${shortDate(s.last)} ${s.last.slice(0,4)}`:''}</span></span></div>
+          <button class="row nav" data-tgt="${i}"><span>Add to</span><span class="val"><span class="vt">${tgt}</span></span></button></div>`}).join('')
+        +`<div class="group"><div class="row"><span>Past events</span><div class="mseg"><button data-rng="year" aria-pressed="${range==='year'}">Last 12 months</button><button data-rng="all" aria-pressed="${range==='all'}">All</button></div></div></div>
+        <p class="note">Repeating events and birthdays always come in. Importing the same calendar again updates it instead of making copies. Alerts and invitees aren't imported.</p>`},
+    mount(el){
+      el.querySelectorAll('[data-tgt]').forEach(b=>b.onclick=()=>{const it=items[+b.dataset.tgt];
+        pushPage(choicePage('Add to',[{k:'new',label:`New calendar “${it.p.name}”`,color:it.p.color||'#8E8E93'},...settings().cals.map(c=>({k:c.id,label:c.name,color:col(c.color)}))],it.target,k=>{it.target=k}))});
+      el.querySelectorAll('[data-rng]').forEach(b=>b.onclick=()=>{range=b.dataset.rng;el.querySelectorAll('[data-rng]').forEach(x=>x.setAttribute('aria-pressed',x===b))});
+    },
+    resume(){refreshPage(SH.stack[SH.stack.length-1])}};
+  function run(){
+    const from=range==='year'?shift(today(),-365):null;let n=0,t=0;
+    for(const it of items){const r=importParsed(it.p,it.target,from);n+=r.n;t+=r.tasks}
+    haptic();SH.onClose=null;sheetClose();
+    toast(`Imported ${nfmt(n)} event${n===1?'':'s'}${t?` and ${t} task${t===1?'':'s'}`:''}`);
+    setTimeout(()=>go('month',{date:today()}),350);
+  }
+  return pg;
+}
+/* iCloud public calendar links: fetched natively in the app (browsers block them), refreshed automatically */
+async function fetchIcs(url){
+  url=url.trim().replace(/^webcals?:\/\//i,'https://');
+  if(!/^https:\/\//i.test(url))throw new Error('Enter a link that starts with webcal:// or https://');
+  let text;
+  if(Capacitor.isNativePlatform()){const r=await CapacitorHttp.get({url,responseType:'text',headers:{Accept:'text/calendar'}});
+    if(r.status>=400)throw new Error(r.status===404?'That link no longer works. Share the calendar again and copy the new link.':`The calendar server answered ${r.status}.`);text=typeof r.data==='string'?r.data:String(r.data||'')}
+  else{try{const r=await fetch(url);text=await r.text()}catch(e){throw new Error('Links only load in the Daybook app on your phone. Here, use a .ics file instead.')}}
+  return{url,text};
+}
+function icsLinkPage(){
+  return{title:'iCloud Link',right:{label:'Add',act:async()=>{
+      const el=SH.stack[SH.stack.length-1].el,inp=el.querySelector('#lk'),err=el.querySelector('#lkerr'),btn=el.querySelector('[data-h="right"]');
+      err.hidden=true;btn.disabled=true;btn.textContent='Loading…';
+      try{const{url,text}=await fetchIcs(inp.value);const p=parseICS(text,'iCloud');
+        const r=importParsed(p,'new',shift(today(),-365),'sub:'+url);
+        const s=clone(settings());s.subs=(s.subs||[]).filter(x=>x.url!==url);s.subs.push({id:uid('sub'),url,calId:r.calId,last:Date.now()});put('settings',s);
+        haptic();toast(`Added “${p.name}” · ${nfmt(r.n)} events`);popPage()}
+      catch(e){err.textContent=e.message==='not-ics'?'That link is not a calendar.':(e.message||'Could not load that link.');err.hidden=false;btn.disabled=false;btn.textContent='Add'}}},
+    html(){return `<div class="group"><div class="row"><span class="ri">${I.link}</span><input id="lk" placeholder="webcal://p…-caldav.icloud.com/published/…" autocomplete="off" inputmode="url"></div></div>
+      <div class="err" id="lkerr" hidden></div>
+      <p class="note">On your iPhone: Calendar → Calendars → tap ⓘ next to a calendar → turn on Public Calendar → Share Link → Copy. Paste it here.<br><br>Daybook checks the link when you open the app (at most every few hours) and updates the events. Changes made in Daybook to these events are replaced at the next update, so edit them in iCloud.<br><br>Anyone who has a public link can see that calendar, so keep the link private.</p>`},
+    mount(el){setTimeout(()=>el.querySelector('#lk').focus(),380)}};
+}
+function subPage(id){
+  return{title:'Calendar Link',html(){const x=(settings().subs||[]).find(z=>z.id===id);if(!x)return '';
+      return `<div class="group"><div class="row"><span style="flex:1">${esc(calOf(x.calId).name)}</span><span class="val">${x.last?'Updated '+agoTxt(x.last):''}</span></div>
+        <div class="row" style="font-size:13px;color:var(--muted);overflow-wrap:anywhere;padding-block:10px">${esc(x.url)}</div></div>
+        <div class="group"><button class="row" data-now style="color:var(--accent)">Update Now</button><button class="row red" data-stop>Stop Updating</button></div>
+        <p class="note">Stopping keeps the events already imported. To remove them, delete the calendar.</p>`},
+    mount(el){el.querySelector('[data-now]')?.addEventListener('click',async()=>{toast('Updating…');const ok=await refreshSub(id,true);if(ok)refreshPage(SH.stack[SH.stack.length-1])});
+      el.querySelector('[data-stop]')?.addEventListener('click',()=>{const s=clone(settings());s.subs=(s.subs||[]).filter(z=>z.id!==id);put('settings',s);popPage()})}};
+}
+let subBusy=false;
+async function refreshSub(id,loud){const x=(settings().subs||[]).find(z=>z.id===id);if(!x)return false;
+  try{const{text}=await fetchIcs(x.url);const p=parseICS(text,'iCloud');const r=importParsed(p,x.calId,shift(today(),-365),'sub:'+x.url);
+    const s=clone(settings());const y=(s.subs||[]).find(z=>z.id===id);if(y){y.last=Date.now();put('settings',s)}if(loud)toast(`Updated · ${nfmt(r.n)} events`);return true}
+  catch(e){if(loud)toast(e.message||'Could not update that calendar.');return false}}
+async function refreshSubs(){if(subBusy||!Capacitor.isNativePlatform())return;subBusy=true;
+  try{for(const x of(settings().subs||[]))if(!x.last||Date.now()-x.last>3*3600e3)await refreshSub(x.id,false)}finally{subBusy=false}}
 
 /* ================= floating task windows ================= */
 const floats=$('#floats'),dock=$('#dock');
@@ -1194,6 +1304,7 @@ if(Capacitor.isNativePlatform()){
     if(ui.view==='year'){go('month',{date:ymd(new Date(ui.year,new Date().getMonth(),1)),dir:1});return}
     App.minimizeApp();
   });
-  App.addListener('resume',()=>{if(session){pull();flushSoon(0)}render()});
+  App.addListener('resume',()=>{if(session){pull();flushSoon(0)}render();setTimeout(refreshSubs,1500)});
+  setTimeout(refreshSubs,4000);
 }
 })();
