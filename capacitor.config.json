@@ -7,6 +7,14 @@
     "allowMixedContent": false
   },
   "plugins": {
-    "SystemBars": { "insetsHandling": "css", "style": "DEFAULT", "initialViewportFitValueHint": "cover" }
+    "SystemBars": {
+      "insetsHandling": "css",
+      "style": "DEFAULT",
+      "initialViewportFitValueHint": "cover"
+    },
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_daybook",
+      "iconColor": "#FF453A"
+    }
   }
 }

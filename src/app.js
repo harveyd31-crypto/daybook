@@ -5,6 +5,7 @@ import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import { App } from '@capacitor/app';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
+import { LocalNotifications } from '@capacitor/local-notifications';
 import './style.css';
 (()=>{
 /* ================= helpers ================= */
@@ -55,6 +56,7 @@ const I={
   notes:svg('<path d="M5 4.5h14v15H5z"/><path d="M8.5 9h7M8.5 12.5h7M8.5 16h4"/>'),
   link:svg('<path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/>'),
   grip:'<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><circle cx="9" cy="6" r="1.7"/><circle cx="15" cy="6" r="1.7"/><circle cx="9" cy="12" r="1.7"/><circle cx="15" cy="12" r="1.7"/><circle cx="9" cy="18" r="1.7"/><circle cx="15" cy="18" r="1.7"/></svg>',
+  bell:svg('<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>'),
   search:svg('<circle cx="10.5" cy="10.5" r="6.5"/><path d="m20 20-4.6-4.6"/>','style="width:18px;height:18px;color:var(--muted)"')};
 
 /* ================= storage: local cache + Supabase sync ================= */
@@ -202,7 +204,9 @@ const ROWMIN=58, HMIN=22, HMAX=170;
 const rowMax=()=>innerWidth>=700?240:204;
 const ui={view:['year','month','week','day','list'].includes(sv.view)?sv.view:'month',ws:sv.ws??0,pinchRev:!!sv.pinchRev,
   rowH:sv.rowH||112,hourH:sv.hourH||56,sel:today(),year:new Date().getFullYear(),rStart:null,rCount:0,visM:firstOf(today()),duoPref:sv.duoPref!==false,sideM:firstOf(today()),sideFollow:null};
-let uiT=0;function saveUi(){clearTimeout(uiT);uiT=setTimeout(()=>lsSet(LSUI,{view:ui.view,ws:ui.ws,pinchRev:ui.pinchRev,duoPref:ui.duoPref,rowH:Math.round(ui.rowH),hourH:Math.round(ui.hourH)}),300)}
+const NOTIF_DEF={on:true,before:true,beforeAt:'19:00',day:true,lead:60,morningAt:'08:00',tasks:true};
+ui.notif={...NOTIF_DEF,...(sv.notif||{})};
+let uiT=0;function saveUi(){clearTimeout(uiT);uiT=setTimeout(()=>lsSet(LSUI,{view:ui.view,ws:ui.ws,pinchRev:ui.pinchRev,duoPref:ui.duoPref,notif:ui.notif,rowH:Math.round(ui.rowH),hourH:Math.round(ui.hourH)}),300)}
 const setSel=d=>{ui.sel=d};
 const offOf=d=>(d.getDay()-ui.ws+7)%7;
 const weekStart=s=>{const d=parse(s);return addDays(d,-offOf(d))};
@@ -262,8 +266,8 @@ function lanesFor(evs){
 /* ================= rendering ================= */
 const view=$('#view'),pane=$('#pane');
 let rq=0,dirty=false;
-function scheduleRender(){if(rq)return;rq=requestAnimationFrame(()=>{rq=0;render()})}
-let rqp=0;function schedulePanels(){if(rq||rqp)return;rqp=requestAnimationFrame(()=>{rqp=0;if(busy()){dirty=true;return}renderHeader();renderPanels()})}
+function scheduleRender(){notifSoon();if(rq)return;rq=requestAnimationFrame(()=>{rq=0;render()})}
+let rqp=0;function schedulePanels(){notifSoon();if(rq||rqp)return;rqp=requestAnimationFrame(()=>{rqp=0;if(busy()){dirty=true;return}renderHeader();renderPanels()})}
 function busy(){return G.mode==='drag'||G.mode==='pinch'||!!P||!!(td&&td.active)}
 function render(o={}){
   onCache=null;evArr=null;taskIdx=null;
@@ -904,6 +908,7 @@ function calsPage(){
           <button class="row nav" data-icslink><span class="ri">${I.link}</span><span style="flex:1">Add iCloud Calendar Link</span></button>
           ${(settings().subs||[]).map(x=>`<button class="row nav" data-sub="${x.id}"><span class="ri">${I.rep}</span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(calOf(x.calId).name)}</span><span class="val">${x.last?'Updated '+agoTxt(x.last):'Not updated yet'}</span></button>`).join('')}
         </div><p class="note" style="margin-top:8px">From iCloud on your Mac: open Calendar, select a calendar, then File → Export → Export… and choose the .ics file here. Or share a calendar from your iPhone as a public link to keep it updated automatically.</p></div>
+        <div class="group"><button class="row nav" data-notifs><span class="ri">${I.bell}</span><span style="flex:1">Notifications</span><span class="val">${!Capacitor.isNativePlatform()?'Phone app':ui.notif.on?'On':'Off'}</span></button></div>
         ${syncStatusHTML()}
         <div class="group"><button class="row" data-export>Export Backup</button><label class="row" style="cursor:pointer">Import Backup<input type="file" accept=".json,application/json" id="imp" hidden></label></div>
         <p class="note">Your calendar and tasks live on your Daybook server and sync between your devices. A backup file is an extra copy you keep yourself.</p>`},
@@ -919,6 +924,7 @@ function calsPage(){
       el.querySelector('#imp').onchange=e=>importFile(e.target.files[0]);
       el.querySelector('#icsin').onchange=e=>readIcsFiles([...e.target.files]);
       el.querySelector('[data-icslink]').onclick=()=>pushPage(icsLinkPage());
+      el.querySelector('[data-notifs]').onclick=()=>pushPage(notifPage());
       el.querySelectorAll('[data-sub]').forEach(b=>b.onclick=()=>pushPage(subPage(b.dataset.sub)));
       el.querySelector('[data-signout]')?.addEventListener('click',signOut);
       el.querySelector('[data-signin]')?.addEventListener('click',()=>{sheetClose();showAuth()});
@@ -1091,6 +1097,93 @@ async function refreshSub(id,loud){const x=(settings().subs||[]).find(z=>z.id===
   catch(e){if(loud)toast(e.message||'Could not update that calendar.');return false}}
 async function refreshSubs(){if(subBusy||!Capacitor.isNativePlatform())return;subBusy=true;
   try{for(const x of(settings().subs||[]))if(!x.last||Date.now()-x.last>3*3600e3)await refreshSub(x.id,false)}finally{subBusy=false}}
+
+/* ================= reminders: the day before and on the day ================= */
+let nT=0,notifBusy=false,notifAgain=false,exactOk=true,notifReady=false;
+function notifSoon(ms=1500){if(!Capacitor.isNativePlatform()||!notifReady)return;clearTimeout(nT);nT=setTimeout(syncNotifs,ms)}
+const nid=k=>{let h=7;for(let i=0;i<k.length;i++)h=(Math.imul(h,31)+k.charCodeAt(i))|0;return (Math.abs(h)%2000000000)+1};
+const atTime=(d,t)=>{const[y,m,dd]=d.split('-').map(Number),[h,mi]=(t||'08:00').split(':').map(Number);return new Date(y,m-1,dd,h,mi).getTime()};
+const leadTxt=m=>m<60?`In ${m} min`:m===60?'In 1 hour':`In ${m/60} hours`;
+function buildNotifs(){
+  const N=ui.notif,out=[],now=Date.now()+20000,t0=today();onCache=null;evArr=null;taskIdx=null;
+  const mk=(key,at,title,body,extra)=>({id:nid(key),title,body,schedule:{at:new Date(at),allowWhileIdle:true},channelId:'daybook',extra,isExactNotification:exactOk,smallIcon:'ic_stat_daybook',iconColor:'#FF453A',group:'daybook'});
+  for(let i=0;i<=21;i++){const d=shift(t0,i);
+    for(const e of eventsOn(d)){if(isMulti(e)&&d!==e.date)continue;
+      const top=isTop(e),when=top?(isMulti(e)?`until ${shortDate(e.endDate)}`:'All day'):`${e.start} – ${e.end}`,where=e.loc?` · ${e.loc}`:'',ex={d,ev:e.id};
+      if(N.before){const at=atTime(shift(d,-1),N.beforeAt);if(at>now)out.push(mk(`b|${e.id}|${d}`,at,e.title,`Tomorrow · ${when}${where}`,ex))}
+      if(N.day){const at=top||N.lead<0?atTime(d,N.morningAt):atTime(d,e.start)-N.lead*60000;
+        if(at>now)out.push(mk(`d|${e.id}|${d}`,at,e.title,`${top||N.lead<0?'Today':N.lead===0?'Now':leadTxt(N.lead)} · ${when}${where}`,ex))}}
+    if(N.tasks)for(const x of tasksDue(d)){if(x.t.done)continue;const at=atTime(d,N.morningAt);
+      if(at>now)out.push(mk(`t|${x.lid}|${x.t.id}|${d}`,at,x.t.text,`Due today · ${x.l.name}`,{d,task:x.lid+'|'+x.t.id}))}}
+  return out.sort((a,b)=>a.schedule.at-b.schedule.at).slice(0,400);
+}
+async function syncNotifs(){
+  if(notifBusy){notifAgain=true;return}notifBusy=true;
+  try{
+    const perm=await LocalNotifications.checkPermissions();
+    try{exactOk=(await LocalNotifications.checkExactNotificationSetting()).exact_alarm==='granted'}catch(e){exactOk=true}
+    const list=ui.notif.on&&perm.display==='granted'?buildNotifs():[];
+    const sigOf=n=>n.schedule.at.getTime()+'|'+n.title+'|'+n.body+'|'+exactOk;
+    const old=lsGet('daybook-notifs')||{},want=new Map(list.map(n=>[n.id,n]));
+    const pend=(await LocalNotifications.getPending()).notifications||[],pids=new Set(pend.map(p=>p.id));
+    const drop=pend.filter(p=>!want.has(p.id)||old[p.id]!==sigOf(want.get(p.id))).map(p=>({id:p.id}));
+    if(drop.length)await LocalNotifications.cancel({notifications:drop});
+    const gone=new Set(drop.map(x=>x.id)),add=list.filter(n=>!pids.has(n.id)||gone.has(n.id));
+    for(let i=0;i<add.length;i+=100)await LocalNotifications.schedule({notifications:add.slice(i,i+100)});
+    const sig={};for(const n of list)sig[n.id]=sigOf(n);lsSet('daybook-notifs',sig);
+  }catch(e){console.warn('Daybook reminders',e)}
+  finally{notifBusy=false;if(notifAgain){notifAgain=false;notifSoon(300)}}
+}
+async function initNotifs(){
+  if(!Capacitor.isNativePlatform())return;
+  try{
+    await LocalNotifications.createChannel({id:'daybook',name:'Events and tasks',description:'Reminders the day before and on the day',importance:4,visibility:1,vibration:true,lights:true,lightColor:'#FF453A'});
+    LocalNotifications.addListener('localNotificationActionPerformed',a=>{const x=a.notification?.extra||{};if(!x.d)return;
+      sheetClose();go('day',{date:x.d});
+      if(x.ev&&S.events[x.ev])setTimeout(()=>openDetail(x.ev,x.d),450);
+      else if(x.task){const[l,t]=x.task.split('|');if(S.lists[l])setTimeout(()=>sheetOpen(taskPage(l,t)),450)}});
+    let perm=await LocalNotifications.checkPermissions();
+    if(perm.display!=='granted'&&ui.notif.on&&!lsGet('daybook-notif-asked')){lsSet('daybook-notif-asked',true);perm=await LocalNotifications.requestPermissions()}
+  }catch(e){console.warn('Daybook reminders',e)}
+  notifReady=true;notifSoon(500);
+}
+function notifPage(){
+  const N=ui.notif,set=(k,v)=>{N[k]=v;saveUi();notifSoon(300)};
+  const leads=[[0,'At the start time'],[15,'15 minutes before'],[30,'30 minutes before'],[60,'1 hour before'],[120,'2 hours before'],[-1,'In the morning']];
+  const pg={title:'Notifications',
+    html(){if(!Capacitor.isNativePlatform())return `<div class="empty">Reminders come from the Daybook app on your phone. Install the APK on the Fold to get them.</div>`;
+      return `<div class="group"><div class="row"><span style="flex:1">Reminders</span><input type="checkbox" class="sw" id="n-on" ${N.on?'checked':''}></div></div>
+        <div id="n-perm"></div>
+        <div ${N.on?'':'hidden'} id="n-more" style="display:flex;flex-direction:column;gap:22px">
+        <div class="sec"><h4>The day before</h4><div class="group">
+          <div class="row"><span style="flex:1">Remind me the day before</span><input type="checkbox" class="sw" id="n-b" ${N.before?'checked':''}></div>
+          <div class="row"><span style="flex:1">At</span><span class="pills"><input type="time" class="pill" id="n-bat" value="${N.beforeAt}"></span></div></div></div>
+        <div class="sec"><h4>On the day</h4><div class="group">
+          <div class="row"><span style="flex:1">Remind me on the day</span><input type="checkbox" class="sw" id="n-d" ${N.day?'checked':''}></div>
+          <button class="row nav" data-lead><span>Timed events</span><span class="val">${(leads.find(x=>x[0]===N.lead)||leads[3])[1]}</span></button>
+          <div class="row"><span style="flex:1">All-day events and morning reminders</span><span class="pills"><input type="time" class="pill" id="n-mat" value="${N.morningAt}"></span></div></div></div>
+        <div class="group"><div class="row"><span style="flex:1">Tasks due that day</span><input type="checkbox" class="sw" id="n-t" ${N.tasks?'checked':''}></div></div>
+        <div class="group"><button class="row" data-test style="color:var(--accent)">Send a Test Notification</button></div>
+        <p class="note">Every event in your visible calendars gets reminders, including imported ones. Daybook keeps the next three weeks ready on this phone and refreshes them whenever you open it, so events added on your Mac are covered once you open Daybook here.</p></div>`},
+    async mount(el){if(!Capacitor.isNativePlatform())return;const q=x=>el.querySelector(x);
+      const perm=async()=>{let p,ex='granted';try{p=(await LocalNotifications.checkPermissions()).display;ex=(await LocalNotifications.checkExactNotificationSetting()).exact_alarm}catch(e){}
+        q('#n-perm').innerHTML=p==='granted'?(ex==='granted'?'':`<div class="group"><button class="row" data-exact style="color:var(--accent)">Allow On-Time Reminders</button></div><p class="note" style="margin-top:6px">Android may deliver reminders a few minutes late until you allow alarms for Daybook.</p>`)
+          :`<div class="group"><button class="row" data-ask style="color:var(--accent)">Allow Notifications</button></div><p class="note" style="margin-top:6px">If nothing happens, open Android Settings → Apps → Daybook → Notifications and turn them on.</p>`;
+        q('[data-ask]')?.addEventListener('click',async()=>{await LocalNotifications.requestPermissions();perm();notifSoon(200)});
+        q('[data-exact]')?.addEventListener('click',async()=>{await LocalNotifications.changeExactNotificationSetting();perm();notifSoon(200)})};
+      perm();
+      q('#n-on').onchange=e=>{set('on',e.target.checked);q('#n-more').hidden=!e.target.checked};
+      q('#n-b').onchange=e=>set('before',e.target.checked);q('#n-d').onchange=e=>set('day',e.target.checked);q('#n-t').onchange=e=>set('tasks',e.target.checked);
+      q('#n-bat').onchange=e=>e.target.value&&set('beforeAt',e.target.value);q('#n-mat').onchange=e=>e.target.value&&set('morningAt',e.target.value);
+      q('[data-lead]').onclick=()=>pushPage(choicePage('Timed Events',leads.map(([k,l])=>({k:String(k),label:l})),String(N.lead),k=>set('lead',+k)));
+      q('[data-test]').onclick=async()=>{try{const p=await LocalNotifications.requestPermissions();if(p.display!=='granted'){toast('Notifications are off for Daybook in Android settings.');return}
+        await LocalNotifications.schedule({notifications:[{id:999001,title:'Daybook',body:'Reminders are working. This is how they will look.',schedule:{at:new Date(Date.now()+4000),allowWhileIdle:true},channelId:'daybook',smallIcon:'ic_stat_daybook',iconColor:'#FF453A',isExactNotification:false}]});toast('Test arrives in a few seconds. Lock the phone to see it.')}catch(e){toast('Could not send a test notification.')}};
+    },
+    resume(){refreshPage(SH.stack[SH.stack.length-1])}};
+  return pg;
+}
+
+if(import.meta.env.MODE==='test')window.__daybook={buildNotifs};
 
 /* ================= floating task windows ================= */
 const floats=$('#floats'),dock=$('#dock');
@@ -1304,7 +1397,8 @@ if(Capacitor.isNativePlatform()){
     if(ui.view==='year'){go('month',{date:ymd(new Date(ui.year,new Date().getMonth(),1)),dir:1});return}
     App.minimizeApp();
   });
-  App.addListener('resume',()=>{if(session){pull();flushSoon(0)}render();setTimeout(refreshSubs,1500)});
+  App.addListener('resume',()=>{if(session){pull();flushSoon(0)}render();setTimeout(refreshSubs,1500);notifSoon(800)});
   setTimeout(refreshSubs,4000);
+  initNotifs();
 }
 })();
