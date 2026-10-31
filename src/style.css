@@ -696,3 +696,21 @@ html.duo .ym h3{font-size:17px}
 .bubble .bl{font-size:18px;font-weight:700}
 .bubble .cnt{top:-3px;right:-3px;min-width:19px;height:19px;font-size:11px;box-shadow:0 0 0 2px var(--bg)}
 .morph{background:var(--bub-bg);box-shadow:var(--bub-shadow),inset 0 0 0 .75px var(--bub-edge)}
+
+/* ---------- task bubbles: option A, ring ---------- */
+.bubble{width:50px;height:50px;background:var(--bg);-webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:inset 0 0 0 1.6px var(--lc),0 2px 10px rgba(0,0,0,.18)}
+.bubble .bl{font-size:17px;font-weight:600;color:var(--lc)}
+.bubble .cnt{top:-2px;right:-2px;min-width:18px;height:18px;padding:0 5px;font-size:10.5px;background:var(--lc);color:#fff;box-shadow:0 0 0 2px var(--bg)}
+.morph{background:var(--bg);box-shadow:inset 0 0 0 1.6px var(--lc),0 2px 10px rgba(0,0,0,.18)}
+.morph span{font-size:17px;font-weight:600}
+
+/* ---------- month view: more readable event text ---------- */
+.mgrid .ev:not(.tk){font-size:11.5px;line-height:1.2;padding:3px 4px;letter-spacing:-.01em;
+  color:color-mix(in srgb,var(--c) 38%,var(--fg));background:color-mix(in srgb,var(--c) 30%,var(--bg))}
+.mgrid .ev.ad:not(.tk){background:color-mix(in srgb,var(--c) 42%,var(--bg));color:color-mix(in srgb,var(--c) 25%,var(--fg))}
+.mgrid.deep .ev:not(.span) .et{-webkit-line-clamp:3}
+.mgrid .ev .t{font-size:10.5px;font-weight:600;opacity:.8;margin-top:1px}
+.mgrid .ev.tk{font-size:11.5px;letter-spacing:-.01em}
+.mgrid .ev.past{opacity:.62;filter:saturate(.6)}
+@media (min-width:700px){.mgrid .ev:not(.tk),.mgrid .ev.tk{font-size:12.5px}}
+.mgrid .ev:not(.span) .et{overflow-wrap:anywhere;-webkit-hyphens:auto;hyphens:auto}
