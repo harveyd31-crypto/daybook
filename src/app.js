@@ -1340,7 +1340,7 @@ function renderPanels(){
       </div></section>`}
   floats.innerHTML=html;dock.innerHTML=tabs;
   const pids=new Set([...floats.querySelectorAll('.panel')].map(p=>p.dataset.l)),bids=new Set([...dock.querySelectorAll('.bubble')].map(b=>b.dataset.undock));
-  if(morphQ){const q=morphQ;morphQ=null;requestAnimationFrame(()=>runMorph(q))}
+  if(morphQ){const q=morphQ;morphQ=null;requestAnimationFrame(()=>[].concat(q).forEach(runMorph))}
   else if(shownP){pids.forEach(id=>{if(!shownP.has(id))popIn(floats.querySelector(`.panel[data-l="${id}"]`))});bids.forEach(id=>{if(!shownB.has(id))jelly(dock.querySelector(`[data-undock="${id}"]`),true)})}
   shownP=pids;shownB=bids;
   open.forEach(t=>floats.querySelector(`[data-t="${t}"]`)?.classList.add('dating'));
@@ -1357,7 +1357,11 @@ const rectOf=el=>{const r=el.getBoundingClientRect();return{x:r.left,y:r.top,w:r
 function dockList(id,fromEl){if(!S.lists[id])return;const el=fromEl||floats.querySelector(`.panel[data-l="${id}"]`);
   morphQ={id,to:'dock',from:el?rectOf(el):null,c:col(S.lists[id].color)};haptic();editList(id,l=>l.state='dock')}
 function undockList(id,fromEl){if(!S.lists[id])return;const el=fromEl||dock.querySelector(`[data-undock="${id}"]`);zMap[id]=++zTop;
-  morphQ={id,to:'float',from:el?rectOf(el):null,c:col(S.lists[id].color)};haptic();editList(id,l=>l.state='float')}
+  /* only one window open at a time: whatever is already floating tucks back into its bubble */
+  const others=Object.keys(S.lists).filter(k=>k!==id&&(S.lists[k].state||'float')==='float');
+  const qs=[{id,to:'float',from:el?rectOf(el):null,c:col(S.lists[id].color)}];
+  others.forEach(k=>{const p=floats.querySelector(`.panel[data-l="${k}"]`);qs.push({id:k,to:'dock',from:p?rectOf(p):null,c:col(S.lists[k].color)})});
+  morphQ=qs;haptic();others.forEach(k=>editList(k,l=>l.state='dock'));editList(id,l=>l.state='float')}
 const springK=t=>1-Math.exp(-6.4*t)*Math.cos(9.2*t);
 function runMorph(q){
   const target=q.to==='dock'?dock.querySelector(`[data-undock="${q.id}"]`):floats.querySelector(`.panel[data-l="${q.id}"]`);
