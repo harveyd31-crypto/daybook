@@ -464,7 +464,10 @@ html{overflow-anchor:none}
 .morph span{font-size:19px;font-weight:800;color:var(--lc)}
 @media (prefers-reduced-motion:reduce){.bubble{animation:none}}
 
-/* ---------- task bubbles: round liquid glass at the right edge ---------- */
+/* ---------- task bubbles: flat frosted glass at the right edge ---------- */
+:root{--bub-bg:rgba(255,255,255,.78);--bub-edge:rgba(0,0,0,.08);--bub-shadow:0 4px 14px rgba(0,0,0,.12)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bub-bg:rgba(44,44,48,.78);--bub-edge:rgba(255,255,255,.12);--bub-shadow:0 4px 16px rgba(0,0,0,.45)}}
+:root[data-theme="dark"]{--bub-bg:rgba(44,44,48,.78);--bub-edge:rgba(255,255,255,.12);--bub-shadow:0 4px 16px rgba(0,0,0,.45)}
 #dock{right:calc(12px + var(--sa-right));top:30%;gap:16px;align-items:flex-end}
 .bubble{width:56px;height:56px}
 .morph span{font-size:19px;font-weight:800}
@@ -686,3 +689,10 @@ html.duo .ym h3{font-size:17px}
 @media (min-width:1100px){html.duo .year{grid-template-columns:repeat(4,minmax(0,1fr))}html.duo .ymg{font-size:11.5px}}
 
 #tcount{min-width:17px;width:auto;height:17px;padding:0 4px;top:4px;right:3px;font-size:11px}
+
+/* flat bubble overrides */
+.bubble{background:var(--bub-bg);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);box-shadow:var(--bub-shadow),inset 0 0 0 .75px var(--bub-edge);animation:none}
+.bubble::after{display:none}
+.bubble .bl{font-size:18px;font-weight:700}
+.bubble .cnt{top:-3px;right:-3px;min-width:19px;height:19px;font-size:11px;box-shadow:0 0 0 2px var(--bg)}
+.morph{background:var(--bub-bg);box-shadow:var(--bub-shadow),inset 0 0 0 .75px var(--bub-edge)}
