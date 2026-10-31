@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { Capacitor, CapacitorHttp } from '@capacitor/core';
+import { Capacitor, CapacitorHttp, registerPlugin } from '@capacitor/core';
 import { parseICS, toDaybook, summarize } from './ics.js';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import { App } from '@capacitor/app';
@@ -274,7 +274,7 @@ function lanesFor(evs){
 /* ================= rendering ================= */
 const view=$('#view'),pane=$('#pane');
 let rq=0,dirty=false;
-function scheduleRender(){notifSoon();if(rq)return;rq=requestAnimationFrame(()=>{rq=0;render()})}
+function scheduleRender(){notifSoon();widgetSoon();if(rq)return;rq=requestAnimationFrame(()=>{rq=0;render()})}
 let rqp=0;function schedulePanels(){notifSoon();if(ui.view==='tasks'){scheduleRender();return}if(rq||rqp)return;rqp=requestAnimationFrame(()=>{rqp=0;if(busy()){dirty=true;return}renderHeader();renderPanels()})}
 function busy(){return G.mode==='drag'||G.mode==='pinch'||!!P||!!(td&&td.active)}
 function render(o={}){
@@ -1180,6 +1180,20 @@ async function refreshSubs(){if(subBusy||!Capacitor.isNativePlatform())return;su
 
 /* ================= reminders: the day before and on the day ================= */
 let nT=0,notifBusy=false,notifAgain=false,exactOk=true,notifReady=false;
+/* ---- home-screen widget: hand the native month widget a snapshot of the coming months ---- */
+const DaybookWidget=registerPlugin('DaybookWidget');let wgT=0,wgLast='';
+function widgetSoon(ms=2500){if(!Capacitor.isNativePlatform())return;clearTimeout(wgT);wgT=setTimeout(saveWidget,ms)}
+function saveWidget(){try{
+  onCache=null;evArr=null;taskIdx=null;const t0=today(),days={};
+  for(let i=-70;i<=200;i++){const d=shift(t0,i),out=[];
+    for(const e of eventsOn(d))out.push({t:e.title||'New Event',c:col(calOf(e.cal).color),s:isTop(e)?'':e.start,a:isTop(e)});
+    for(const x of tasksDue(d))if(!x.t.done)out.push({t:x.t.text,c:col(x.l.color),s:x.t.time||'',k:true});
+    if(out.length)days[d]=out}
+  const json=JSON.stringify({ws:ui.ws||0,days});if(json===wgLast)return;wgLast=json;
+  DaybookWidget.save({json}).catch(()=>{});
+}catch(e){console.warn('widget',e)}}
+function openFromWidget(url){const m=/daybook:\/\/day\/(\d{4}-\d\d-\d\d)/.exec(url||'');if(!m)return;
+  sheetClose();if(duoOn()){go('month',{date:m[1]});setTimeout(()=>pickDay(m[1]),60)}else go('day',{date:m[1]})}
 function notifSoon(ms=1500){if(!Capacitor.isNativePlatform()||!notifReady)return;clearTimeout(nT);nT=setTimeout(syncNotifs,ms)}
 const nid=k=>{let h=7;for(let i=0;i<k.length;i++)h=(Math.imul(h,31)+k.charCodeAt(i))|0;return (Math.abs(h)%2000000000)+1};
 const atTime=(d,t)=>{const[y,m,dd]=d.split('-').map(Number),[h,mi]=(t||'08:00').split(':').map(Number);return new Date(y,m-1,dd,h,mi).getTime()};
@@ -1648,6 +1662,10 @@ if(Capacitor.isNativePlatform()){
     if(ui.view==='year'){go('month',{date:ymd(new Date(ui.year,new Date().getMonth(),1)),dir:1});return}
     App.minimizeApp();
   });
+  App.addListener('appUrlOpen',e=>openFromWidget(e.url));
+  App.getLaunchUrl().then(r=>{if(r&&r.url)setTimeout(()=>openFromWidget(r.url),300)}).catch(()=>{});
+  App.addListener('pause',()=>{clearTimeout(wgT);saveWidget()});
+  widgetSoon(1500);
   App.addListener('resume',()=>{if(session){pull();flushSoon(0)}render();setTimeout(refreshSubs,1500);notifSoon(800);wxLoad()});
   setTimeout(refreshSubs,4000);
   initNotifs();

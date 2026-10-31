@@ -3,5 +3,6 @@
     <string name="app_name">Daybook</string>
     <string name="title_activity_main">Daybook</string>
     <string name="package_name">com.harveyd.daybook</string>
+    <string name="widget_desc">Your month with events, and the next days beside it when there is room</string>
     <string name="custom_url_scheme">com.harveyd.daybook</string>
 </resources>
